@@ -344,13 +344,22 @@ tbody tr:hover{background:rgba(255,255,255,.02)}
 .swatch-row input[type="color"]{width:32px;height:32px;padding:0;border:1px solid rgba(255,255,255,.15);border-radius:8px;background:none;flex-shrink:0;cursor:pointer}
 .swatch-row .swatch-label{font-size:10.5px;color:var(--gray);text-transform:uppercase;letter-spacing:.05em;flex:1}
 .swatch-row input[type="text"]{width:78px;flex-shrink:0;font-size:11px;padding:6px 8px}
-.palette-card{display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:var(--radius-sm);background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.08);margin-bottom:10px;transition:border-color var(--t)}
-.palette-card.is-active{border-color:var(--gold-d);background:rgba(201,168,76,.06)}
+.palette-card-wrap{border-radius:var(--radius-sm);background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.08);margin-bottom:10px;overflow:hidden;transition:border-color var(--t)}
+.palette-card-wrap.is-active{border-color:var(--gold-d);background:rgba(201,168,76,.06)}
+.palette-card{display:flex;align-items:center;gap:14px;padding:12px 14px}
 .palette-strip{display:flex;flex-shrink:0;border-radius:8px;overflow:hidden;box-shadow:0 0 0 1px rgba(255,255,255,.08)}
 .palette-strip span{width:14px;height:28px;display:block}
 .palette-card .pc-name{flex:1;min-width:0;font-size:13px}
-.palette-card .pc-active-tag{font-size:9px;font-family:'Montserrat',sans-serif;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--gold);border:1px solid var(--gold-d);padding:3px 8px;border-radius:20px;flex-shrink:0}
+.palette-card .pc-roles-tag{font-size:9px;font-family:'Montserrat',sans-serif;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--gold);border:1px solid var(--gold-d);padding:3px 8px;border-radius:20px;flex-shrink:0;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .palette-card .pc-actions{display:flex;gap:8px;flex-shrink:0}
+.palette-assign{border-top:1px solid rgba(255,255,255,.06);padding:12px 14px}
+.palette-assign summary{cursor:pointer;font-size:11px;color:var(--gray);text-transform:uppercase;letter-spacing:.05em;list-style:none}
+.palette-assign summary::-webkit-details-marker{display:none}
+.palette-assign summary::before{content:'▸ ';color:var(--gold-d)}
+.palette-assign[open] summary::before{content:'▾ '}
+.role-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin:12px 0}
+.role-chk{display:flex;align-items:center;gap:6px;font-size:11.5px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:6px;padding:6px 8px;cursor:pointer}
+.role-chk input{width:auto !important;accent-color:var(--gold)}
 </style>
 </head>
 <body>
@@ -1040,6 +1049,24 @@ tbody tr:hover{background:rgba(255,255,255,.02)}
             <input id="maint-reason-other" type="text" placeholder="Describe the reason…" />
           </div>
 
+          <div class="field" id="maint-cooldown-field">
+            <label>Auto-off cooldown (optional)</label>
+            <select id="maint-cooldown-select">
+              <option value="">No auto-off — stays down until I turn it off</option>
+              <option value="5">5 minutes</option>
+              <option value="10">10 minutes</option>
+              <option value="30">30 minutes</option>
+            </select>
+          </div>
+
+          <div id="maint-cooldown-timer-wrap" style="display:none;align-items:center;justify-content:space-between;gap:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:var(--radius-sm);padding:12px 16px;margin-bottom:16px">
+            <div>
+              <div style="font-size:9px;color:var(--gray);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Auto-off in</div>
+              <div id="maint-cooldown-digital" style="font-family:'Montserrat',monospace;font-size:26px;font-weight:700;letter-spacing:.04em;color:var(--gold)">--:--</div>
+            </div>
+            <button class="btn btn-outline btn-sm" id="maint-cooldown-extend-btn" type="button">+5 min</button>
+          </div>
+
           <div class="error-msg" id="maint-error"></div>
         </div>
 
@@ -1052,7 +1079,7 @@ tbody tr:hover{background:rgba(255,255,255,.02)}
       <!-- Theme Palette -->
       <div class="tab-view" id="tab-settings" style="display:none">
         <div class="topbar"><h1>Theme Palette</h1><button class="link-btn" id="logout-btn-settings">Log out</button></div>
-        <div style="font-size:12px;color:var(--gray);margin-bottom:16px">Upload an image to pull a palette from it, or pick colors by hand, then save and apply. The applied palette re-themes both the Super Admin and Sub Admin dashboards for everyone.</div>
+        <div style="font-size:12px;color:var(--gray);margin-bottom:16px">Upload an image to pull a palette from it, or pick colors by hand, then save it. Each saved palette can be assigned to specific roles — pick Super Admin, one or more Sub Admin roles, or both — and only those dashboards re-theme.</div>
 
         <div id="palette-editor-wrap" style="display:none">
           <div class="panel glass" style="margin-bottom:16px;max-width:680px">
@@ -1764,10 +1791,15 @@ async function captureLoginPhoto(loginLogId, token) {
 /* ---------- Tabs ---------- */
 document.querySelectorAll('.nav-item[data-tab]').forEach((item) => {
   item.addEventListener('click', () => {
+    // Leaving the Theme Palette tab without saving should drop any unsaved
+    // live preview and restore whatever palette is actually assigned to
+    // this admin's role.
+    const leavingUnsavedPalettePreview = document.getElementById('tab-settings').style.display === 'block' && item.dataset.tab !== 'settings';
     document.querySelectorAll('.nav-item[data-tab]').forEach((i) => i.classList.remove('active'));
     item.classList.add('active');
     document.querySelectorAll('.tab-view').forEach((v) => v.style.display = 'none');
     document.getElementById('tab-' + item.dataset.tab).style.display = 'block';
+    if (leavingUnsavedPalettePreview) applyActivePalette();
     if (item.dataset.tab === 'products') loadProducts();
     if (item.dataset.tab === 'pages') { loadPages(); renderHomepageRow(); }
     if (item.dataset.tab === 'admins') { loadAdmins(); loadLoginLogs(); }
@@ -2172,8 +2204,10 @@ async function loadSystemStatus() {
 }
 
 /* ---------- Maintenance Mode (real, via /api/admin) ---------- */
-let maintenanceState = { on: false, reason: null };
+let maintenanceState = { on: false, reason: null, cooldownSeconds: null, cooldownEndsAt: null };
 let maintenanceSubmitting = false;
+let maintCountdownInterval = null;
+let maintenanceCooldownWatcherStarted = false;
 
 function renderMaintenanceState() {
   const pill = document.getElementById('maint-status-pill');
@@ -2183,6 +2217,8 @@ function renderMaintenanceState() {
   const labelOn = document.getElementById('maint-switch-label-on');
   const reasonField = document.getElementById('maint-reason-field');
   const reasonOtherField = document.getElementById('maint-reason-other-field');
+  const cooldownField = document.getElementById('maint-cooldown-field');
+  const cooldownTimerWrap = document.getElementById('maint-cooldown-timer-wrap');
 
   if (maintenanceState.on) {
     pill.textContent = 'DOWN';
@@ -2195,6 +2231,8 @@ function renderMaintenanceState() {
     labelOn.style.opacity = '1';
     reasonField.style.display = 'none';
     reasonOtherField.style.display = 'none';
+    cooldownField.style.display = 'none';
+    cooldownTimerWrap.style.display = maintenanceState.cooldownEndsAt ? 'flex' : 'none';
   } else {
     pill.textContent = 'LIVE';
     pill.className = 'int-status ok';
@@ -2206,7 +2244,53 @@ function renderMaintenanceState() {
     labelOn.style.opacity = '0';
     reasonField.style.display = 'block';
     reasonOtherField.style.display = document.getElementById('maint-reason-select').value === 'Other' ? 'block' : 'none';
+    cooldownField.style.display = 'block';
+    cooldownTimerWrap.style.display = 'none';
   }
+  startMaintCountdownIfNeeded();
+}
+
+function stopMaintCountdown() {
+  if (maintCountdownInterval) { clearInterval(maintCountdownInterval); maintCountdownInterval = null; }
+}
+
+// Purely cosmetic, per-second, computed client-side from cooldownEndsAt —
+// the ACTUAL auto-off is decided server-side (see maybeAutoExpireMaintenance
+// in admin.js). When this hits zero it just asks the server for the real
+// status, which is what triggers the actual flip.
+function startMaintCountdownIfNeeded() {
+  stopMaintCountdown();
+  const digital = document.getElementById('maint-cooldown-digital');
+  if (!maintenanceState.on || !maintenanceState.cooldownEndsAt) { digital.textContent = '--:--'; return; }
+
+  const tick = () => {
+    const msLeft = new Date(maintenanceState.cooldownEndsAt).getTime() - Date.now();
+    if (msLeft <= 0) {
+      digital.textContent = '00:00';
+      stopMaintCountdown();
+      loadMaintenanceStatus(); // triggers the real server-side auto-expiry check
+      return;
+    }
+    const totalSec = Math.ceil(msLeft / 1000);
+    const mm = String(Math.floor(totalSec / 60)).padStart(2, '0');
+    const ss = String(totalSec % 60).padStart(2, '0');
+    digital.textContent = `${mm}:${ss}`;
+  };
+  tick();
+  maintCountdownInterval = setInterval(tick, 1000);
+}
+
+// Lightweight background safety net: even if the Super Admin isn't sitting
+// on the Maintenance Mode tab, this catches an expired cooldown as long as
+// ANY tab of the admin panel is open somewhere (started once per login —
+// see loadDashboard). Only polls at all while a cooldown is actually
+// running, and only ever calls an endpoint Super Admin is allowed to call.
+function startMaintenanceCooldownWatcher() {
+  if (maintenanceCooldownWatcherStarted || currentRole !== 'super_admin') return;
+  maintenanceCooldownWatcherStarted = true;
+  setInterval(() => {
+    if (maintenanceState.on && maintenanceState.cooldownEndsAt) loadMaintenanceStatus();
+  }, 15000);
 }
 
 function currentMaintReason() {
@@ -2218,7 +2302,7 @@ function currentMaintReason() {
 async function loadMaintenanceStatus() {
   try {
     const data = await api('/api/admin?action=maintenance-status');
-    maintenanceState = { on: data.on, reason: data.reason };
+    maintenanceState = { on: data.on, reason: data.reason, cooldownSeconds: data.cooldownSeconds, cooldownEndsAt: data.cooldownEndsAt };
     if (data.on && data.reason) {
       const sel = document.getElementById('maint-reason-select');
       const match = Array.from(sel.options).find((o) => o.value === data.reason);
@@ -2227,6 +2311,7 @@ async function loadMaintenanceStatus() {
     }
     renderMaintenanceState();
     loadMaintenanceHistory();
+    startMaintenanceCooldownWatcher();
   } catch (err) {
     document.getElementById('maint-status-pill').textContent = 'Error';
   }
@@ -2256,6 +2341,24 @@ document.getElementById('maint-reason-select').addEventListener('change', () => 
   document.getElementById('maint-reason-other-field').style.display = document.getElementById('maint-reason-select').value === 'Other' ? 'block' : 'none';
 });
 
+document.getElementById('maint-cooldown-extend-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('maint-cooldown-extend-btn');
+  const errEl = document.getElementById('maint-error');
+  errEl.textContent = '';
+  btn.disabled = true;
+  try {
+    const data = await api('/api/admin?action=maintenance-extend', { method: 'POST' });
+    maintenanceState.cooldownSeconds = data.cooldownSeconds;
+    maintenanceState.cooldownEndsAt = data.cooldownEndsAt;
+    renderMaintenanceState();
+    loadMaintenanceHistory();
+  } catch (err) {
+    errEl.textContent = err.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 document.getElementById('maint-switch-track').addEventListener('click', async () => {
   if (maintenanceSubmitting) return;
   const errEl = document.getElementById('maint-error');
@@ -2266,12 +2369,16 @@ document.getElementById('maint-switch-track').addEventListener('click', async ()
     if (!reason) { errEl.textContent = 'Select (or type) a reason before going down.'; return; }
     if (!confirm('This takes the live store down and redirects customers to the backup. Continue?')) return;
 
+    const cooldownRaw = document.getElementById('maint-cooldown-select').value;
+    const cooldownMinutes = cooldownRaw ? Number(cooldownRaw) : null;
+
     maintenanceSubmitting = true;
     try {
-      const data = await api('/api/admin?action=maintenance-toggle', { method: 'POST', body: JSON.stringify({ on: true, reason }) });
-      maintenanceState = { on: data.on, reason: data.reason };
+      const data = await api('/api/admin?action=maintenance-toggle', { method: 'POST', body: JSON.stringify({ on: true, reason, cooldownMinutes }) });
+      maintenanceState = { on: data.on, reason: data.reason, cooldownSeconds: data.cooldownSeconds, cooldownEndsAt: data.cooldownEndsAt };
       renderMaintenanceState();
       loadMaintenanceHistory();
+      startMaintenanceCooldownWatcher();
     } catch (err) {
       errEl.textContent = err.message;
     } finally {
@@ -2281,9 +2388,10 @@ document.getElementById('maint-switch-track').addEventListener('click', async ()
     maintenanceSubmitting = true;
     try {
       const data = await api('/api/admin?action=maintenance-toggle', { method: 'POST', body: JSON.stringify({ on: false }) });
-      maintenanceState = { on: data.on, reason: data.reason };
+      maintenanceState = { on: data.on, reason: data.reason, cooldownSeconds: data.cooldownSeconds, cooldownEndsAt: data.cooldownEndsAt };
       document.getElementById('maint-reason-select').value = '';
       document.getElementById('maint-reason-other').value = '';
+      document.getElementById('maint-cooldown-select').value = '';
       renderMaintenanceState();
       loadMaintenanceHistory();
     } catch (err) {
@@ -2905,6 +3013,7 @@ async function loadDashboard() {
     loadOrdersStats();
     loadDashboardVisitors();
     applyActivePalette();
+    if (currentRole === 'super_admin') loadMaintenanceStatus();
   } catch (err) {
     if (err.message.includes('Session')) { clearToken(); showLogin(); }
   }
@@ -4728,7 +4837,7 @@ const PALETTE_TOKENS = [
   { key: 'gray',      cssVar: '--gray',   label: 'Muted Text' },
 ];
 const DEFAULT_PALETTE_COLORS = { gold: '#c9a84c', goldLight: '#e2c27d', goldDark: '#9e7c2e', black: '#0a0a0b', dark: '#111111', dark2: '#161616', bone: '#f5f3ee', gray: '#9a958c' };
-let paletteActivePaletteId = null;
+let paletteAssignments = {}; // role_title -> active palette id (or null for "default"), Super Admin view only
 let paletteEditorColors = { ...DEFAULT_PALETTE_COLORS };
 
 /* -- hex/RGB/HSL helpers (used to build gold-l/gold-d off one extracted accent, and to sort/rank image colors) -- */
@@ -4839,6 +4948,7 @@ function renderPaletteSwatchEditor() {
     el.addEventListener('input', () => {
       paletteEditorColors[el.dataset.key] = el.value;
       wrap.querySelector(`input[data-key-text="${el.dataset.key}"]`).value = el.value;
+      applyPaletteToRoot(paletteEditorColors);
     });
   });
   wrap.querySelectorAll('input[data-key-text]').forEach((el) => {
@@ -4847,6 +4957,7 @@ function renderPaletteSwatchEditor() {
       if (/^#[0-9a-fA-F]{6}$/.test(el.value)) {
         paletteEditorColors[key] = el.value.toLowerCase();
         wrap.querySelector(`input[type="color"][data-key="${key}"]`).value = el.value;
+        applyPaletteToRoot(paletteEditorColors);
       } else {
         el.value = paletteEditorColors[key];
       }
@@ -4862,7 +4973,12 @@ document.getElementById('palette-image-file').addEventListener('change', async f
   try {
     paletteEditorColors = await extractPaletteFromImageFile(file);
     renderPaletteSwatchEditor();
-    status.textContent = 'Extracted — tweak any swatch below, then name and save.';
+    applyPaletteToRoot(paletteEditorColors); // recognized → applied instantly as a live preview
+    const nameInput = document.getElementById('palette-name-input');
+    if (!nameInput.value.trim()) {
+      nameInput.value = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]+/g, ' ').trim().slice(0, 60) || 'Untitled palette';
+    }
+    status.textContent = 'Recognized and applied as a live preview on your screen — tweak any swatch if needed, then Save to keep it and pick roles below to make it stick.';
   } catch (err) {
     status.textContent = err.message;
   }
@@ -4877,7 +4993,7 @@ document.getElementById('palette-save-btn').addEventListener('click', async () =
   try {
     await api('/api/admin?action=palette-create', { method: 'POST', body: JSON.stringify({ name, colors: paletteEditorColors }) });
     nameInput.value = '';
-    status.textContent = 'Saved.';
+    status.textContent = 'Saved — find it below and assign it to roles.';
     loadPalettes();
   } catch (err) {
     status.textContent = err.message;
@@ -4888,56 +5004,108 @@ function paletteStripHtml(colors) {
   return `<div class="palette-strip">${PALETTE_TOKENS.map((t) => `<span style="background:${escapeAttr(colors[t.key] || '#000')}"></span>`).join('')}</div>`;
 }
 
+function paletteRoleLabel(role) { return role === 'super_admin' ? 'Super Admin' : role; }
+
+// Builds the "Assign to roles" section for one palette card: a checkbox
+// per role (Super Admin + every Sub Admin org title) pre-checked wherever
+// that role is currently themed by this palette (paletteId === null means
+// the "Default" pseudo-palette), plus an Apply button scoped to this card.
+function paletteAssignHtml(paletteId, roleOptions, assignments) {
+  const checks = roleOptions.map((role) => {
+    const current = Object.prototype.hasOwnProperty.call(assignments, role) ? assignments[role] : null;
+    const checked = current === paletteId ? 'checked' : '';
+    return `<label class="role-chk"><input type="checkbox" value="${escapeAttr(role)}" ${checked} /> ${escapeHtml(paletteRoleLabel(role))}</label>`;
+  }).join('');
+  return `
+    <details class="palette-assign" data-palette-id="${paletteId === null ? '' : escapeAttr(paletteId)}">
+      <summary>Assign to roles</summary>
+      <div class="role-grid">${checks}</div>
+      <button class="btn btn-outline btn-sm palette-apply-btn" type="button">Apply to Selected Roles</button>
+      <span class="error-msg palette-apply-status" style="margin-left:10px"></span>
+    </details>`;
+}
+
+function rolesThemedBy(paletteId, roleOptions, assignments) {
+  return roleOptions.filter((role) => {
+    const current = Object.prototype.hasOwnProperty.call(assignments, role) ? assignments[role] : null;
+    return current === paletteId;
+  });
+}
+
 async function loadPalettes() {
   const list = document.getElementById('palette-list-content');
   const isSuper = currentRole === 'super_admin';
   try {
     if (!isSuper) {
-      // Sub admins can't manage the catalog — just show what's currently applied.
+      // Sub admins can't manage the catalog — just show what's currently applied to their own seat.
       const { palette } = await api('/api/admin?action=palette-active');
       list.innerHTML = palette
-        ? `<div class="palette-card is-active">${paletteStripHtml(palette.colors)}<div class="pc-name">${escapeHtml(palette.name)}</div><span class="pc-active-tag">Active</span></div>`
-        : '<div class="empty-state">Using the original default theme — your Super Admin hasn\'t applied a custom palette yet.</div>';
+        ? `<div class="palette-card-wrap is-active"><div class="palette-card">${paletteStripHtml(palette.colors)}<div class="pc-name">${escapeHtml(palette.name)}</div><span class="pc-roles-tag">Active</span></div></div>`
+        : '<div class="empty-state">Using the original default theme — your Super Admin hasn\'t assigned a custom palette to your role yet.</div>';
       return;
     }
 
-    const { palettes, activePaletteId } = await api('/api/admin?action=palette-list');
-    paletteActivePaletteId = activePaletteId;
+    const { palettes, roles, assignments } = await api('/api/admin?action=palette-list');
+    const roleOptions = roles && roles.length ? roles : ['super_admin', ...ADM_ORG_TITLES];
+    paletteAssignments = assignments || {};
 
-    const defaultCard = `<div class="palette-card${!activePaletteId ? ' is-active' : ''}">
-      ${paletteStripHtml(DEFAULT_PALETTE_COLORS)}
-      <div class="pc-name">Default (original theme)</div>
-      ${!activePaletteId ? '<span class="pc-active-tag">Active</span>' : `<div class="pc-actions"><button class="btn btn-outline btn-sm" onclick="applyPalette(null)">Apply</button></div>`}
+    const defaultRoles = rolesThemedBy(null, roleOptions, paletteAssignments);
+    const defaultCard = `<div class="palette-card-wrap${defaultRoles.length ? ' is-active' : ''}">
+      <div class="palette-card">
+        ${paletteStripHtml(DEFAULT_PALETTE_COLORS)}
+        <div class="pc-name">Default (original theme)</div>
+        ${defaultRoles.length ? `<span class="pc-roles-tag" title="${escapeAttr(defaultRoles.map(paletteRoleLabel).join(', '))}">${escapeHtml(defaultRoles.map(paletteRoleLabel).join(', '))}</span>` : ''}
+      </div>
+      ${paletteAssignHtml(null, roleOptions, paletteAssignments)}
     </div>`;
 
     const rows = (palettes || []).map((p) => {
-      const isActive = activePaletteId === p.id;
-      return `<div class="palette-card${isActive ? ' is-active' : ''}">
-        ${paletteStripHtml(p.colors)}
-        <div class="pc-name">${escapeHtml(p.name)}</div>
-        ${isActive ? '<span class="pc-active-tag">Active</span>' : `<div class="pc-actions">
-          <button class="btn btn-outline btn-sm" onclick="applyPalette('${escapeAttr(p.id)}')">Apply</button>
-          <button class="btn btn-danger btn-sm" onclick="deletePalette('${escapeAttr(p.id)}')">Delete</button>
-        </div>`}
+      const themedRoles = rolesThemedBy(p.id, roleOptions, paletteAssignments);
+      return `<div class="palette-card-wrap${themedRoles.length ? ' is-active' : ''}">
+        <div class="palette-card">
+          ${paletteStripHtml(p.colors)}
+          <div class="pc-name">${escapeHtml(p.name)}</div>
+          ${themedRoles.length ? `<span class="pc-roles-tag" title="${escapeAttr(themedRoles.map(paletteRoleLabel).join(', '))}">${escapeHtml(themedRoles.map(paletteRoleLabel).join(', '))}</span>` : ''}
+          <div class="pc-actions"><button class="btn btn-danger btn-sm" onclick="deletePalette('${escapeAttr(p.id)}')">Delete</button></div>
+        </div>
+        ${paletteAssignHtml(p.id, roleOptions, paletteAssignments)}
       </div>`;
     }).join('');
 
     list.innerHTML = defaultCard + rows;
+
+    list.querySelectorAll('.palette-apply-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const details = btn.closest('.palette-assign');
+        const paletteId = details.dataset.paletteId || null;
+        const selectedRoles = Array.from(details.querySelectorAll('input[type="checkbox"]:checked')).map((cb) => cb.value);
+        const status = details.querySelector('.palette-apply-status');
+        if (!selectedRoles.length) { status.textContent = 'Pick at least one role first.'; return; }
+        status.textContent = 'Applying…';
+        btn.disabled = true;
+        try {
+          await applyPalette(paletteId, selectedRoles);
+          status.textContent = 'Applied ✓';
+        } catch (err) {
+          status.textContent = err.message;
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
   } catch (err) {
     list.innerHTML = `<div style="color:var(--gray)">${escapeHtml(err.message)}</div>`;
   }
 }
 
-async function applyPalette(id) {
-  try {
-    await api('/api/admin?action=palette-activate', { method: 'POST', body: JSON.stringify({ id: id || null }) });
-    await loadPalettes();
-    await applyActivePalette();
-  } catch (err) { alert(err.message); }
+async function applyPalette(id, roles) {
+  await api('/api/admin?action=palette-activate', { method: 'POST', body: JSON.stringify({ id: id || null, roles }) });
+  await loadPalettes();
+  await applyActivePalette();
 }
 
 async function deletePalette(id) {
-  if (!confirm('Delete this saved palette?')) return;
+  if (!confirm('Delete this saved palette? Any roles currently themed by it will fall back to the default theme.')) return;
   try {
     await api('/api/admin?action=palette-delete', { method: 'POST', body: JSON.stringify({ id }) });
     await loadPalettes();
