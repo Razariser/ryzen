@@ -1186,6 +1186,31 @@ async function maybeAutoExpireMaintenance(row) {
   return { is_on: false, reason: null, cooldown_seconds: null, cooldown_ends_at: null, updated_at: new Date().toISOString() };
 }
 
+// PUBLIC — no auth required. This is what the storefront's middleware.js
+// calls, on every page request, to decide whether to show the real site or
+// the maintenance page. Deliberately returns only on/reason — no cooldown
+// timestamps, no "changed by", nothing an anonymous visitor should see.
+// Side benefit: real storefront traffic now also runs the same lazy
+// cooldown-expiry check the admin panel does, so with live visitors the
+// cooldown actually flips off within moments of hitting zero, not just
+// "whenever an admin's panel happens to poll next."
+async function handleMaintenancePublicStatus(req, res) {
+  const { data, error } = await supabase
+    .from('store_maintenance_status')
+    .select('is_on, reason, cooldown_seconds, cooldown_ends_at, updated_at')
+    .eq('id', 1)
+    .maybeSingle();
+  if (error) throw error;
+
+  const current = await maybeAutoExpireMaintenance(data);
+
+  res.setHeader('Cache-Control', 'no-store');
+  return res.status(200).json({
+    on: !!(current && current.is_on),
+    reason: current ? current.reason : null,
+  });
+}
+
 async function handleMaintenanceStatus(req, res) {
   const session = requireAuth(req, res);
   if (!session) return;
@@ -3475,6 +3500,7 @@ module.exports = async function handler(req, res) {
     if (req.method === 'GET' && action === 'system-status') return await handleSystemStatus(req, res);
     if (req.method === 'GET' && action === 'integrations-status') return await handleIntegrationsStatus(req, res);
     if (req.method === 'GET' && action === 'maintenance-status') return await handleMaintenanceStatus(req, res);
+    if (req.method === 'GET' && action === 'maintenance-public-status') return await handleMaintenancePublicStatus(req, res);
     if (req.method === 'POST' && action === 'maintenance-toggle') return await handleMaintenanceToggle(req, res);
     if (req.method === 'POST' && action === 'maintenance-extend') return await handleMaintenanceExtend(req, res);
     if (req.method === 'GET' && action === 'maintenance-history') return await handleMaintenanceHistory(req, res);
