@@ -120,9 +120,14 @@ async function sendTelegramAlert(admin, req, faceStatus) {
 // below), separately from sendTelegramAlert above — GPS coordinates aren't
 // available yet at login time, only after the async browser permission
 // prompt completes. Sends a native Telegram location pin (renders as an
-// in-app map) plus a follow-up text with the admin's name and a Maps link,
-// since sendLocation has no room for a caption of its own.
-async function sendLocationAlert(username, role, latitude, longitude) {
+// in-app map) plus a follow-up message with TWO tappable buttons that open
+// straight into Google Maps/whatever navigation app is set as default:
+// one drops a pin at the exact coordinate, the other starts live turn-by-
+// turn navigation there. Both use the same raw lat/long — "exact" isn't a
+// separate, more-precise reading, it's the same GPS fix rendered as a pin
+// instead of a route; accuracyMeters (from the browser's own accuracy
+// estimate) is shown so it's clear how tight that fix actually was.
+async function sendLocationAlert(username, role, latitude, longitude, accuracyMeters) {
   try {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -134,13 +139,22 @@ async function sendLocationAlert(username, role, latitude, longitude) {
       body: JSON.stringify({ chat_id: chatId, latitude, longitude }),
     });
 
-    const mapsLink = `https://www.google.com/maps?q=${latitude},${longitude}`;
+    const pinLink = `https://www.google.com/maps?q=${latitude},${longitude}`;
+    const navigateLink = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}&travelmode=driving`;
+    const accuracyLine = typeof accuracyMeters === 'number' ? `\nGPS accuracy: ±${Math.round(accuracyMeters)}m` : '';
+
     await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
-        text: `📍 Exact login location confirmed\nUser: ${username} (${role})\n${mapsLink}`,
+        text: `📍 Exact login location confirmed\nUser: ${username} (${role})${accuracyLine}\nTap a button below — opens directly in Google Maps.`,
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '📍 Exact Location', url: pinLink },
+            { text: '🧭 Navigate There', url: navigateLink },
+          ]],
+        },
       }),
     });
   } catch (err) {
@@ -148,7 +162,8 @@ async function sendLocationAlert(username, role, latitude, longitude) {
   }
 }
 
-async function sendFailedLoginAlert(attemptedUsername, req) {  try {
+async function sendFailedLoginAlert(attemptedUsername, req, reason) {
+  try {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
     if (!token || !chatId) return;
@@ -162,7 +177,8 @@ async function sendFailedLoginAlert(attemptedUsername, req) {  try {
       `Attempted username: ${attemptedUsername || 'unknown'}\n` +
       `IP: ${ip}\n` +
       `Device: ${userAgent}\n` +
-      `Time: ${time}`;
+      `Time: ${time}` +
+      (reason ? `\nReason: ${reason}` : '');
 
     await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
@@ -174,11 +190,34 @@ async function sendFailedLoginAlert(attemptedUsername, req) {  try {
   }
 }
 
+// Shared by both wrong-password and wrong-role-selection failures below —
+// one code path for anything that counts as a failed login attempt, so the
+// brute-force counter and face-lock threshold apply consistently to both.
+// `reason` is internal-only (goes to the Telegram alert for Hunter's own
+// visibility) — the client always gets back the same generic message
+// regardless of reason, so a wrong role selection can't be used as an
+// oracle to confirm a password was actually correct.
+async function recordFailedLoginAttempt(admin, attemptedUsername, req, reason) {
+  await logLogin(admin ? admin.id : null, attemptedUsername, false, req);
+  await sendFailedLoginAlert(attemptedUsername, req, reason);
+  if (admin) {
+    const nextCount = (admin.failed_attempt_count || 0) + 1;
+    const updates = { failed_attempt_count: nextCount };
+    if (nextCount >= 3) updates.face_lock = true;
+    await supabase.from('admins').update(updates).eq('id', admin.id);
+  }
+}
+
+const GENERIC_LOGIN_ERROR = 'Incorrect username, password, or role.';
+
 async function handleLogin(req, res) {
-  const { username, password } = req.body || {};
+  const { username, password, role } = req.body || {};
 
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password are required.' });
+  }
+  if (!role) {
+    return res.status(400).json({ error: 'Select your role before signing in.' });
   }
 
   const { data: admin, error } = await supabase
@@ -192,25 +231,26 @@ async function handleLogin(req, res) {
   if (!admin || !verifyPassword(password, admin.password_hash)) {
     // Log the failed attempt before responding — this is what feeds
     // Monitor Agent's brute-force detection.
-    await logLogin(admin ? admin.id : null, username, false, req);
-    await sendFailedLoginAlert(username, req);
-
-    // Track consecutive failures per-admin, including Super Admin (owner
-    // requested this apply to their own account too — no exemption).
-    if (admin) {
-      const nextCount = (admin.failed_attempt_count || 0) + 1;
-      const updates = { failed_attempt_count: nextCount };
-      if (nextCount >= 3) {
-        updates.face_lock = true;
-      }
-      await supabase.from('admins').update(updates).eq('id', admin.id);
-    }
-
-    return res.status(401).json({ error: 'Incorrect username or password.' });
+    await recordFailedLoginAttempt(admin, username, req, 'wrong password');
+    return res.status(401).json({ error: GENERIC_LOGIN_ERROR });
   }
 
   if (admin.deactivated_at) {
     return res.status(401).json({ error: 'This account has been deactivated.' });
+  }
+
+  // Password is correct — now confirm the role they picked on the login
+  // screen actually matches this account. Super Admin must pick
+  // "super_admin"; a sub-admin must pick their own assigned org_title
+  // exactly. A mismatch is treated the same as a wrong password: logged,
+  // alerted, and counted toward the 3-strikes face-lock — a real second
+  // factor, not a cosmetic dropdown. The response is deliberately the
+  // SAME generic error as a wrong password, so nobody probing this form
+  // can tell from the response alone whether the password was right.
+  const expectedRole = admin.role === 'super_admin' ? 'super_admin' : admin.org_title;
+  if (!expectedRole || role !== expectedRole) {
+    await recordFailedLoginAttempt(admin, username, req, expectedRole ? `wrong role selected (picked "${role}")` : 'correct password, but this account has no role assigned yet');
+    return res.status(401).json({ error: GENERIC_LOGIN_ERROR });
   }
 
   // Correct password. If this account is face-locked (3+ prior failures)
@@ -266,7 +306,7 @@ async function handleUpdateLocation(req, res) {
   const session = requireAuth(req, res);
   if (!session) return;
 
-  const { loginLogId, latitude, longitude } = req.body || {};
+  const { loginLogId, latitude, longitude, accuracy } = req.body || {};
   if (!loginLogId || typeof latitude !== 'number' || typeof longitude !== 'number') {
     return res.status(400).json({ error: 'loginLogId, latitude, and longitude are required.' });
   }
@@ -280,7 +320,7 @@ async function handleUpdateLocation(req, res) {
     .maybeSingle();
 
   if (error) throw error;
-  if (data) await sendLocationAlert(session.username, session.role, latitude, longitude);
+  if (data) await sendLocationAlert(session.username, session.role, latitude, longitude, typeof accuracy === 'number' ? accuracy : null);
   return res.status(200).json({ ok: true });
 }
 
@@ -1147,70 +1187,7 @@ async function handleSystemStatus(req, res) {
    NOTE: flipping this flag only records intent + notifies via Telegram —
    your storefront (index.html or wherever it's served from) needs to
    actually check this flag server-side and redirect/serve a backup page
-   when it's on. This endpoint is the source of truth for that check.
-
-   Cooldown auto-off: turning maintenance ON can carry an optional
-   cooldown (5 / 10 / 30 min), stored as cooldown_seconds + cooldown_ends_at
-   on the same row. There is no reliable always-on background timer on
-   serverless/Vercel Hobby (cron there is capped at once/day — see the
-   Daily Cron Brief note further down), so this is CHECKED rather than
-   scheduled: every read of status (this endpoint — polled by the admin
-   panel every few seconds while the Maintenance tab is open — plus the
-   Telegram /status command) lazily flips the switch back off the moment
-   the cooldown has passed. In practice that means the flip happens within
-   a few seconds of the timer hitting zero as long as an admin has the
-   panel open somewhere (or the very next time anyone checks), not at the
-   exact instant the countdown reaches 00:00 with nobody watching at all.
-   While a cooldown is running, Super Admin can push it back with fixed
-   +5 minute extensions (maintenance-extend) rather than picking a new
-   duration from scratch.
-
-   Requires adding two columns to the existing store_maintenance_status
-   table (run once via the Supabase SQL editor):
-
-     alter table store_maintenance_status add column if not exists cooldown_seconds integer;
-     alter table store_maintenance_status add column if not exists cooldown_ends_at timestamptz;
-── */
-const MAINTENANCE_COOLDOWN_PRESETS_MIN = [5, 10, 30];
-const MAINTENANCE_EXTEND_MINUTES = 5;
-
-// Cooldown auto-off is CHECKED on every read, not scheduled — see the
-// comment above. Given the freshest row, flips is_on back to false (and
-// clears the cooldown fields) if its cooldown has passed, and returns the
-// resulting row (unchanged if nothing needed to happen).
-async function maybeAutoExpireMaintenance(row) {
-  if (!row || !row.is_on || !row.cooldown_ends_at) return row;
-  if (new Date(row.cooldown_ends_at) > new Date()) return row;
-
-  await applyMaintenanceChange({ on: false, reason: '', changedBy: 'System (cooldown timer)' });
-  return { is_on: false, reason: null, cooldown_seconds: null, cooldown_ends_at: null, updated_at: new Date().toISOString() };
-}
-
-// PUBLIC — no auth required. This is what the storefront's middleware.js
-// calls, on every page request, to decide whether to show the real site or
-// the maintenance page. Deliberately returns only on/reason — no cooldown
-// timestamps, no "changed by", nothing an anonymous visitor should see.
-// Side benefit: real storefront traffic now also runs the same lazy
-// cooldown-expiry check the admin panel does, so with live visitors the
-// cooldown actually flips off within moments of hitting zero, not just
-// "whenever an admin's panel happens to poll next."
-async function handleMaintenancePublicStatus(req, res) {
-  const { data, error } = await supabase
-    .from('store_maintenance_status')
-    .select('is_on, reason, cooldown_seconds, cooldown_ends_at, updated_at')
-    .eq('id', 1)
-    .maybeSingle();
-  if (error) throw error;
-
-  const current = await maybeAutoExpireMaintenance(data);
-
-  res.setHeader('Cache-Control', 'no-store');
-  return res.status(200).json({
-    on: !!(current && current.is_on),
-    reason: current ? current.reason : null,
-  });
-}
-
+   when it's on. This endpoint is the source of truth for that check. ── */
 async function handleMaintenanceStatus(req, res) {
   const session = requireAuth(req, res);
   if (!session) return;
@@ -1220,43 +1197,26 @@ async function handleMaintenanceStatus(req, res) {
 
   const { data, error } = await supabase
     .from('store_maintenance_status')
-    .select('is_on, reason, cooldown_seconds, cooldown_ends_at, updated_at')
+    .select('is_on, reason, updated_at')
     .eq('id', 1)
     .maybeSingle();
   if (error) throw error;
 
-  const current = await maybeAutoExpireMaintenance(data);
-
   return res.status(200).json({
-    on: !!(current && current.is_on),
-    reason: current ? current.reason : null,
-    cooldownSeconds: current ? current.cooldown_seconds : null,
-    cooldownEndsAt: current ? current.cooldown_ends_at : null,
-    updatedAt: current ? current.updated_at : null,
+    on: !!(data && data.is_on),
+    reason: data ? data.reason : null,
+    updatedAt: data ? data.updated_at : null,
   });
 }
 
 // Shared by both the admin-panel toggle (below) and the Telegram webhook,
 // so there is exactly one code path that ever writes the actual state.
-// cooldownSeconds is only meaningful when on === true; turning off (by any
-// path — manual, Telegram, or the auto-expiry check above) always clears
-// the cooldown fields so a stale timer never lingers into the next session.
-async function applyMaintenanceChange({ on, reason, changedBy, cooldownSeconds }) {
+async function applyMaintenanceChange({ on, reason, changedBy }) {
   const finalReason = on ? reason.trim() : null;
-  const finalCooldownSeconds = on ? (cooldownSeconds || null) : null;
-  const cooldownEndsAt = finalCooldownSeconds ? new Date(Date.now() + finalCooldownSeconds * 1000).toISOString() : null;
 
   const { error: upsertError } = await supabase
     .from('store_maintenance_status')
-    .upsert({
-      id: 1,
-      is_on: on,
-      reason: finalReason,
-      cooldown_seconds: finalCooldownSeconds,
-      cooldown_ends_at: cooldownEndsAt,
-      updated_by: changedBy,
-      updated_at: new Date().toISOString(),
-    });
+    .upsert({ id: 1, is_on: on, reason: finalReason, updated_by: changedBy, updated_at: new Date().toISOString() });
   if (upsertError) throw upsertError;
 
   await supabase.from('store_maintenance_log').insert({
@@ -1265,7 +1225,7 @@ async function applyMaintenanceChange({ on, reason, changedBy, cooldownSeconds }
     changed_by: changedBy,
   });
 
-  return { on, reason: finalReason, cooldownSeconds: finalCooldownSeconds, cooldownEndsAt };
+  return { on, reason: finalReason };
 }
 
 async function handleMaintenanceToggle(req, res) {
@@ -1275,7 +1235,7 @@ async function handleMaintenanceToggle(req, res) {
     return res.status(403).json({ error: 'Super Admin only.' });
   }
 
-  const { on, reason, cooldownMinutes } = req.body || {};
+  const { on, reason } = req.body || {};
   if (typeof on !== 'boolean') {
     return res.status(400).json({ error: '"on" (boolean) is required.' });
   }
@@ -1283,15 +1243,7 @@ async function handleMaintenanceToggle(req, res) {
     return res.status(400).json({ error: 'A reason is required to turn maintenance mode on.' });
   }
 
-  let cooldownSeconds = null;
-  if (on && cooldownMinutes != null) {
-    if (!MAINTENANCE_COOLDOWN_PRESETS_MIN.includes(cooldownMinutes)) {
-      return res.status(400).json({ error: 'cooldownMinutes must be one of: ' + MAINTENANCE_COOLDOWN_PRESETS_MIN.join(', ') });
-    }
-    cooldownSeconds = cooldownMinutes * 60;
-  }
-
-  const result = await applyMaintenanceChange({ on, reason: reason || '', changedBy: session.username, cooldownSeconds });
+  const result = await applyMaintenanceChange({ on, reason: reason || '', changedBy: session.username });
 
   // Uses its OWN dedicated bot (TELEGRAM_BOT_TOKEN_MAINTENANCE /
   // TELEGRAM_CHAT_ID_MAINTENANCE) — separate from the login-alert bot
@@ -1305,7 +1257,7 @@ async function handleMaintenanceToggle(req, res) {
     if (token && chatId) {
       const time = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
       const text = on
-        ? `🔴 Maintenance Mode turned ON by ${session.username}\nReason: ${result.reason}${result.cooldownSeconds ? `\nAuto-off in: ${result.cooldownSeconds / 60} min` : ''}\nTime: ${time}`
+        ? `🔴 Maintenance Mode turned ON by ${session.username}\nReason: ${result.reason}\nTime: ${time}`
         : `🟢 Maintenance Mode turned OFF by ${session.username}\nTime: ${time}`;
       await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: 'POST',
@@ -1318,51 +1270,6 @@ async function handleMaintenanceToggle(req, res) {
   }
 
   return res.status(200).json(result);
-}
-
-// "+5 min" — pushes an already-running cooldown further out by a fixed
-// 5-minute step (stacking presses = +5, +5, +5, ...) rather than letting
-// the Super Admin pick an arbitrary new duration mid-session.
-async function handleMaintenanceExtend(req, res) {
-  const session = requireAuth(req, res);
-  if (!session) return;
-  if (session.role !== 'super_admin') {
-    return res.status(403).json({ error: 'Super Admin only.' });
-  }
-
-  const { data, error } = await supabase
-    .from('store_maintenance_status')
-    .select('is_on, reason, cooldown_seconds, cooldown_ends_at')
-    .eq('id', 1)
-    .maybeSingle();
-  if (error) throw error;
-
-  const current = await maybeAutoExpireMaintenance(data);
-  if (!current || !current.is_on) {
-    return res.status(400).json({ error: 'Maintenance mode is not currently on.' });
-  }
-  if (!current.cooldown_ends_at) {
-    return res.status(400).json({ error: 'This session has no cooldown timer running to extend.' });
-  }
-
-  const addSeconds = MAINTENANCE_EXTEND_MINUTES * 60;
-  const base = new Date(current.cooldown_ends_at) > new Date() ? new Date(current.cooldown_ends_at) : new Date();
-  const newEndsAt = new Date(base.getTime() + addSeconds).toISOString();
-  const newCooldownSeconds = (current.cooldown_seconds || 0) + addSeconds;
-
-  const { error: updateError } = await supabase
-    .from('store_maintenance_status')
-    .update({ cooldown_ends_at: newEndsAt, cooldown_seconds: newCooldownSeconds, updated_by: session.username, updated_at: new Date().toISOString() })
-    .eq('id', 1);
-  if (updateError) throw updateError;
-
-  await supabase.from('store_maintenance_log').insert({
-    is_on: true,
-    reason: current.reason ? `${current.reason} (cooldown +${MAINTENANCE_EXTEND_MINUTES} min)` : `Cooldown +${MAINTENANCE_EXTEND_MINUTES} min`,
-    changed_by: session.username,
-  });
-
-  return res.status(200).json({ success: true, cooldownEndsAt: newEndsAt, cooldownSeconds: newCooldownSeconds });
 }
 
 // Two-way control: the Maintenance Mode bot can flip the switch, not just
@@ -1415,15 +1322,8 @@ async function handleMaintenanceTelegramWebhook(req, res) {
 
   try {
     if (/^\/status\b/i.test(text)) {
-      const { data } = await supabase.from('store_maintenance_status').select('is_on, reason, cooldown_seconds, cooldown_ends_at, updated_at').eq('id', 1).maybeSingle();
-      const current = await maybeAutoExpireMaintenance(data);
-      let statusText = '🟢 LIVE';
-      if (current && current.is_on) {
-        const cooldownNote = current.cooldown_ends_at
-          ? ` (auto-off in ~${Math.max(0, Math.round((new Date(current.cooldown_ends_at) - Date.now()) / 60000))} min)`
-          : '';
-        statusText = `🔴 DOWN — ${current.reason || 'no reason recorded'}${cooldownNote}`;
-      }
+      const { data } = await supabase.from('store_maintenance_status').select('is_on, reason, updated_at').eq('id', 1).maybeSingle();
+      const statusText = data && data.is_on ? `🔴 DOWN — ${data.reason || 'no reason recorded'}` : '🟢 LIVE';
       await reply(`Current status: ${statusText}`);
       return res.status(200).json({ ok: true });
     }
@@ -2116,193 +2016,6 @@ async function handleNoteDelete(req, res) {
   const { error } = await supabase.from('admin_notes').delete().eq('id', id).eq('admin_id', session.sub);
   if (error) throw error;
   return res.status(200).json({ success: true });
-}
-
-/* ── Theme Palettes: Super-Admin-managed color themes, assignable PER ROLE
-   across both the Super Admin seat and every Sub Admin org-title seat (COO,
-   CTO, CFO, ...). A palette isn't just "on" or "off" globally — the Super
-   Admin picks which specific role(s) a given palette themes, so different
-   seats can run different palettes (or share one) at the same time.
-
-   'role_title' values used as keys throughout: the literal string
-   'super_admin' for the Super Admin seat, or one of ORG_TITLES (COO, CTO,
-   CFO, CMO, CLO, CHRO, CAIO, CDO (Design), CPO, CECO, CCO, CDO (Data)) for a
-   Sub Admin seat. A role with no row / a null active_palette_id just means
-   "use the built-in default theme".
-
-   Only Super Admin can list/create/delete/assign palettes. Any
-   authenticated admin (Super or Sub) can read the palette assigned to
-   THEIR OWN role, via palette-active — that's what lets a Sub Admin's
-   dashboard pick up whatever the Super Admin assigned to their seat.
-
-   Requires these two Supabase tables (create once via the SQL editor):
-
-     create table color_palettes (
-       id uuid primary key default gen_random_uuid(),
-       name text not null,
-       colors jsonb not null,
-       created_by text,
-       created_at timestamptz not null default now()
-     );
-
-     create table admin_theme_assignments (
-       role_title text primary key,
-       active_palette_id uuid references color_palettes(id) on delete set null,
-       updated_by text,
-       updated_at timestamptz
-     );
-
-   NOTE: if you previously created a `store_theme_status` table for an
-   earlier single-global-theme version of this feature, it's no longer used
-   and can be dropped (or just left alone — nothing reads it anymore).
-── */
-const PALETTE_KEYS = ['gold', 'goldLight', 'goldDark', 'black', 'dark', 'dark2', 'bone', 'gray'];
-const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
-const SUPER_ADMIN_ROLE_KEY = 'super_admin';
-const PALETTE_ROLE_KEYS = [SUPER_ADMIN_ROLE_KEY, ...ORG_TITLES];
-
-function sanitizePaletteColors(colors) {
-  if (!colors || typeof colors !== 'object') return null;
-  const clean = {};
-  for (const key of PALETTE_KEYS) {
-    const val = colors[key];
-    if (typeof val !== 'string' || !HEX_COLOR_RE.test(val)) return null;
-    clean[key] = val.toLowerCase();
-  }
-  return clean;
-}
-
-// Validates the "roles" array sent from the client against the known set
-// (Super Admin + every org title), de-duplicated, in a stable order.
-function sanitizePaletteRoles(roles) {
-  if (!Array.isArray(roles) || !roles.length) return null;
-  const unique = [...new Set(roles)];
-  if (unique.some((r) => !PALETTE_ROLE_KEYS.includes(r))) return null;
-  return unique;
-}
-
-async function handlePaletteList(req, res) {
-  const session = requireAuth(req, res);
-  if (!session) return;
-  if (session.role !== 'super_admin') {
-    return res.status(403).json({ error: 'Super Admin only.' });
-  }
-  const { data: palettes, error } = await supabase
-    .from('color_palettes')
-    .select('id, name, colors, created_by, created_at')
-    .order('created_at', { ascending: false });
-  if (error) throw error;
-
-  const { data: rows } = await supabase.from('admin_theme_assignments').select('role_title, active_palette_id');
-  const assignments = {};
-  (rows || []).forEach((r) => { assignments[r.role_title] = r.active_palette_id; });
-
-  return res.status(200).json({ palettes: palettes || [], roles: PALETTE_ROLE_KEYS, assignments });
-}
-
-async function handlePaletteCreate(req, res) {
-  const session = requireAuth(req, res);
-  if (!session) return;
-  if (session.role !== 'super_admin') {
-    return res.status(403).json({ error: 'Super Admin only.' });
-  }
-  const { name, colors } = req.body || {};
-  if (!name || !name.trim()) {
-    return res.status(400).json({ error: 'A palette name is required.' });
-  }
-  const clean = sanitizePaletteColors(colors);
-  if (!clean) {
-    return res.status(400).json({ error: 'colors must include valid 6-digit hex values for: ' + PALETTE_KEYS.join(', ') });
-  }
-  const { data, error } = await supabase
-    .from('color_palettes')
-    .insert({ name: name.trim().slice(0, 60), colors: clean, created_by: session.username || session.sub })
-    .select('id, name, colors, created_by, created_at')
-    .single();
-  if (error) throw error;
-  return res.status(200).json({ palette: data });
-}
-
-async function handlePaletteDelete(req, res) {
-  const session = requireAuth(req, res);
-  if (!session) return;
-  if (session.role !== 'super_admin') {
-    return res.status(403).json({ error: 'Super Admin only.' });
-  }
-  const { id } = req.body || {};
-  if (!id) return res.status(400).json({ error: 'id is required.' });
-
-  // Any role currently themed by this palette falls back to the default
-  // theme rather than being left with a dangling reference.
-  await supabase.from('admin_theme_assignments').update({
-    active_palette_id: null, updated_by: session.username || session.sub, updated_at: new Date().toISOString(),
-  }).eq('active_palette_id', id);
-
-  const { error } = await supabase.from('color_palettes').delete().eq('id', id);
-  if (error) throw error;
-  return res.status(200).json({ success: true });
-}
-
-// Assigns one palette (or null, meaning "reset to default") to one or more
-// roles at once — this is the "select sub admin role(s) to apply the
-// palette to, plus an option for Super Admin" step.
-async function handlePaletteActivate(req, res) {
-  const session = requireAuth(req, res);
-  if (!session) return;
-  if (session.role !== 'super_admin') {
-    return res.status(403).json({ error: 'Super Admin only.' });
-  }
-  const { id, roles } = req.body || {};
-
-  const cleanRoles = sanitizePaletteRoles(roles);
-  if (!cleanRoles) {
-    return res.status(400).json({ error: 'Select at least one role (Super Admin and/or a Sub Admin role) to apply this to.' });
-  }
-
-  if (id) {
-    const { data: palette, error: findError } = await supabase.from('color_palettes').select('id').eq('id', id).maybeSingle();
-    if (findError) throw findError;
-    if (!palette) return res.status(404).json({ error: 'Palette not found.' });
-  }
-
-  const now = new Date().toISOString();
-  const rows = cleanRoles.map((roleTitle) => ({
-    role_title: roleTitle, active_palette_id: id || null, updated_by: session.username || session.sub, updated_at: now,
-  }));
-  const { error } = await supabase.from('admin_theme_assignments').upsert(rows, { onConflict: 'role_title' });
-  if (error) throw error;
-  return res.status(200).json({ success: true, activePaletteId: id || null, roles: cleanRoles });
-}
-
-// Readable by ANY authenticated admin (Super or Sub) — resolves the
-// requesting admin's OWN role_title and returns whatever palette the Super
-// Admin assigned to that seat (or null for "use the default theme").
-async function handleActivePalette(req, res) {
-  const session = requireAuth(req, res);
-  if (!session) return;
-
-  let roleTitle = SUPER_ADMIN_ROLE_KEY;
-  if (session.role !== 'super_admin') {
-    const { data: admin } = await supabase.from('admins').select('org_title').eq('id', session.sub).maybeSingle();
-    if (!admin || !admin.org_title) return res.status(200).json({ palette: null });
-    roleTitle = admin.org_title;
-  }
-
-  const { data: assignment } = await supabase
-    .from('admin_theme_assignments')
-    .select('active_palette_id')
-    .eq('role_title', roleTitle)
-    .maybeSingle();
-  if (!assignment || !assignment.active_palette_id) {
-    return res.status(200).json({ palette: null });
-  }
-  const { data: palette, error } = await supabase
-    .from('color_palettes')
-    .select('id, name, colors')
-    .eq('id', assignment.active_palette_id)
-    .maybeSingle();
-  if (error) throw error;
-  return res.status(200).json({ palette: palette || null });
 }
 
 /* ── Daily Cron brief: the genuine "works on its own" piece. Vercel Hobby
@@ -3500,9 +3213,7 @@ module.exports = async function handler(req, res) {
     if (req.method === 'GET' && action === 'system-status') return await handleSystemStatus(req, res);
     if (req.method === 'GET' && action === 'integrations-status') return await handleIntegrationsStatus(req, res);
     if (req.method === 'GET' && action === 'maintenance-status') return await handleMaintenanceStatus(req, res);
-    if (req.method === 'GET' && action === 'maintenance-public-status') return await handleMaintenancePublicStatus(req, res);
     if (req.method === 'POST' && action === 'maintenance-toggle') return await handleMaintenanceToggle(req, res);
-    if (req.method === 'POST' && action === 'maintenance-extend') return await handleMaintenanceExtend(req, res);
     if (req.method === 'GET' && action === 'maintenance-history') return await handleMaintenanceHistory(req, res);
     if (req.method === 'POST' && action === 'maintenance-webhook') return await handleMaintenanceTelegramWebhook(req, res);
     if (req.method === 'POST' && action === 'face-challenge-verify') return await handleFaceChallengeVerify(req, res);
@@ -3535,11 +3246,6 @@ module.exports = async function handler(req, res) {
     if (req.method === 'POST' && action === 'notes-create') return await handleNoteCreate(req, res);
     if (req.method === 'POST' && action === 'notes-update') return await handleNoteUpdate(req, res);
     if (req.method === 'POST' && action === 'notes-delete') return await handleNoteDelete(req, res);
-    if (req.method === 'GET' && action === 'palette-list') return await handlePaletteList(req, res);
-    if (req.method === 'POST' && action === 'palette-create') return await handlePaletteCreate(req, res);
-    if (req.method === 'POST' && action === 'palette-delete') return await handlePaletteDelete(req, res);
-    if (req.method === 'POST' && action === 'palette-activate') return await handlePaletteActivate(req, res);
-    if (req.method === 'GET' && action === 'palette-active') return await handleActivePalette(req, res);
     if (req.method === 'GET' && action === 'cron-daily-brief') return await handleCronDailyBrief(req, res);
     if (req.method === 'GET' && action === 'cron-weekly-strategy') return await handleCronWeeklyStrategy(req, res);
     if (req.method === 'GET' && action === 'cron-weekly-pricing-check') return await handleCronWeeklyPricingCheck(req, res);
