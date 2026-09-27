@@ -92,7 +92,9 @@ export default function AuthFlow() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  // On load: check for a live Supabase session, otherwise show the auth card.
+  // On load: check for a live Supabase session. Never auto-open the auth
+  // card for a signed-out visitor — it now only opens when they explicitly
+  // click Sign In or trigger checkout (both fire razariser:open-auth).
   useEffect(() => {
     (async () => {
       const remembered = loadRemembered();
@@ -104,8 +106,7 @@ export default function AuthFlow() {
         fetchMembership(profile.id);
         setStep("home");
       } else {
-        const dismissed = sessionStorage.getItem(GUEST_KEY);
-        setStep(dismissed ? "hidden" : "auth");
+        setStep("hidden");
       }
     })();
   }, []);
