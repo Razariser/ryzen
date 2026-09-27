@@ -2952,7 +2952,7 @@ select.addr-inp {
 <section id="hero">
   <div id="hero-bg-3d"></div>
   <div class="hero-l">
-    <div class="hero-tag">NEW COLLECTION 2025</div>
+    <div class="hero-tag">NEW COLLECTION since 1997</div>
     <h1 class="hero-h1">Designed<br/>For The <em>Future</em></h1>
     <p class="hero-sub">Premium menswear crafted with limited-edition fabrics and bespoke silhouettes. Rise beyond ordinary.</p>
     <div class="hero-btns">
@@ -3055,34 +3055,6 @@ select.addr-inp {
       <div class="cust-progress">0/6 customized</div>
     </div>
 
-    <div class="fit-row">
-      <div class="fit-photo">
-        <img alt="Model wearing custom fit" loading="lazy" src="https://images.pexels.com/photos/29616936/pexels-photo-29616936.jpeg?auto=compress&cs=tinysrgb&w=700&q=80"/>
-      </div>
-      <div class="fit-panel">
-        <div class="fit-panel-ttl">Your Fit</div>
-        <div><div class="fit-stat-lbl">Height</div><div class="fit-stat-val">180 cm</div></div>
-        <div><div class="fit-stat-lbl">Weight</div><div class="fit-stat-val">72 kg</div></div>
-        <div><div class="fit-stat-lbl">Chest</div><div class="fit-stat-val">100 cm</div></div>
-        <div><div class="fit-stat-lbl">Waist</div><div class="fit-stat-val">80 cm</div></div>
-        <div><div class="fit-stat-lbl">Hips</div><div class="fit-stat-val">98 cm</div></div>
-        <button class="fit-upd" onclick="openSG()">Update Size</button>
-      </div>
-    </div>
-
-    <div class="cust-col">
-      <div class="fab-ttl">Premium Swatches</div>
-      <div class="fab-grid">
-        <div class="fab-item" onclick="setSwatchColor('#161616')"><div class="fab-sw" style="background:#161616"></div><div class="fab-lbl">Onyx Black</div></div>
-        <div class="fab-item" onclick="setSwatchColor('#eeece4')"><div class="fab-sw" style="background:#eeece4"></div><div class="fab-lbl">Arctic White</div></div>
-        <div class="fab-item" onclick="setSwatchColor('#4c4c4f')"><div class="fab-sw" style="background:#4c4c4f"></div><div class="fab-lbl">Graphite Grey</div></div>
-        <div class="fab-item" onclick="setSwatchColor('#c9ac82')"><div class="fab-sw" style="background:#c9ac82"></div><div class="fab-lbl">Sand Beige</div></div>
-        <div class="fab-item" onclick="setSwatchColor('#2e4536')"><div class="fab-sw" style="background:#2e4536"></div><div class="fab-lbl">Forest Green</div></div>
-        <div class="fab-item" onclick="setSwatchColor('#232c47')"><div class="fab-sw" style="background:#232c47"></div><div class="fab-lbl">Navy Blue</div></div>
-        <div class="fab-item" onclick="setSwatchColor('#5c2430')"><div class="fab-sw" style="background:#5c2430"></div><div class="fab-lbl">Burgundy</div></div>
-        <div class="fab-item" onclick="setSwatchColor('#54728c')"><div class="fab-sw" style="background:#54728c"></div><div class="fab-lbl">Steel Blue</div></div>
-      </div>
-    </div>
   </div>
 </section>
 
@@ -3190,7 +3162,7 @@ select.addr-inp {
 
   <div style="max-width:1440px;margin:0 auto;border-top:1px solid var(--line);padding-top:28px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px">
     <div style="color:rgba(242,240,236,0.5);font-family:'Montserrat',sans-serif;font-size:10px;letter-spacing:1.5px">
-      &copy; <span id="fyear">2025</span> RAZARISER. All rights reserved. Crafted for the extraordinary.
+      &copy; <span id="fyear">1997</span> RAZARISER. All rights reserved. Crafted for the extraordinary.
     </div>
     <div style="display:flex;gap:8px;align-items:center;font-family:'Montserrat',sans-serif;font-size:10px;font-weight:800;letter-spacing:0.5px">
       <span style="background:#fff;color:#1a1f71;padding:4px 8px;border-radius:2px">VISA</span>
@@ -3561,7 +3533,7 @@ function closeSearch(){ fastClose('srch'); }
 function openMobNav(){ document.getElementById('mnav').classList.add('open'); }
 function closeMobNav(){ document.getElementById('mnav').classList.remove('open'); }
 
-function openAuth(){ window.dispatchEvent(new CustomEvent('ryzen:open-auth')); openAuthModal('signin'); }
+function openAuth(){ window.dispatchEvent(new CustomEvent('razariser:open-auth')); }
 
 /* ── HERO IMAGE SWAP ── */
 function swapHeroImg(thumb, src) {
@@ -3922,7 +3894,18 @@ function openAddr(){
 
 function closeAddr(){ fastClose('addr'); }
 
-function submitAddr(){
+function loadRazorpayCheckoutScript(){
+  return new Promise(function(resolve){
+    if(window.Razorpay) return resolve(true);
+    var s = document.createElement('script');
+    s.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    s.onload = function(){ resolve(true); };
+    s.onerror = function(){ resolve(false); };
+    document.body.appendChild(s);
+  });
+}
+
+async function submitAddr(){
   var name = document.getElementById('a-name').value.trim();
   var phone = document.getElementById('a-phone').value.trim();
   var pin = document.getElementById('a-pin').value.trim();
@@ -3935,9 +3918,87 @@ function submitAddr(){
     toast('Please fill all required fields & confirm address');
     return;
   }
+
+  if(!window.supabaseClient){
+    toast('Account system is not connected yet.');
+    return;
+  }
+
+  // Checkout currently requires being signed in — a guest order has no
+  // supabase_user_id to attach it to, which the Neon orders table requires.
+  var sessionRes = await window.supabaseClient.auth.getSession();
+  var session = sessionRes && sessionRes.data && sessionRes.data.session;
+  if(!session){
+    toast('Please sign in to complete checkout');
+    closeAddr();
+    window.dispatchEvent(new CustomEvent('razariser:open-auth'));
+    return;
+  }
+
+  var sub = cartSubtotal();
+  var disc = coupon ? Math.round(sub * coupon.pct / 100) : 0;
+  var total = sub - disc;
+
+  var payload = {
+    amount: total,
+    items: cart.map(function(i){
+      return { name: i.name, price: i.price, quantity: i.qty };
+    }),
+    address: { name: name, phone: phone, pincode: pin, line: line, city: city, state: state },
+    coupon: coupon ? coupon.code : null,
+  };
+
+  toast('Placing your order...');
+
+  var resp;
+  try {
+    resp = await fetch('/api/order?action=create', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + session.access_token,
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch (e) {
+    toast('Network error. Please try again.');
+    return;
+  }
+
+  var data = await resp.json().catch(function(){ return {}; });
+  if(!resp.ok || data.error){
+    toast(data.error || 'Could not create order. Please try again.');
+    return;
+  }
+
+  var ready = await loadRazorpayCheckoutScript();
+  if(!ready){
+    toast('Could not load payment window. Check your connection.');
+    return;
+  }
+
   closeAddr();
-  toast('Order placed successfully! Order ID #RZR-' + Math.floor(100000 + Math.random() * 900000));
-  cart = []; coupon = null; saveCart(); renderCart();
+
+  var rzp = new window.Razorpay({
+    key: data.key,
+    order_id: data.id,
+    amount: data.amount,
+    currency: data.currency,
+    name: 'Razariser',
+    description: 'Order payment',
+    theme: { color: '#C6763B' },
+    prefill: { name: name, contact: phone, email: session.user && session.user.email },
+    handler: function(){
+      toast('Payment successful! Your order is confirmed.');
+      cart = []; coupon = null; saveCart(); renderCart();
+    },
+    modal: {
+      ondismiss: function(){
+        toast('Payment window closed. Your order is saved as pending.');
+      },
+    },
+  });
+  rzp.open();
 }
 
 /* ── 3D CUSTOMIZER OPTION SELECTION ── */
@@ -4023,7 +4084,7 @@ function acctAuthAction(){
     });
     return;
   }
-  openAuthModal('signin');
+  window.dispatchEvent(new CustomEvent('razariser:open-auth'));
 }
 
 /* ── SIGN IN / CREATE ACCOUNT MODAL ── */
