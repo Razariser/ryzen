@@ -834,6 +834,55 @@ async function logAdminAction(session, action, targetId, details) {
   }
 }
 
+/* ── Terms & Policy consent: shown after every successful sign-in until the
+   admin has agreed to the CURRENT version. The agreement is recorded in
+   admin_logs (action 'terms_accepted', with the version, IP and device),
+   so it persists across devices and doubles as an audit record. Bump
+   TERMS_VERSION whenever the wording changes and everyone is asked again. ── */
+const TERMS_VERSION = '1.0';
+
+async function handleTermsStatus(req, res) {
+  const session = requireAuth(req, res);
+  if (!session) return;
+
+  const { data, error } = await supabase
+    .from('admin_logs')
+    .select('details')
+    .eq('actor_id', session.sub)
+    .eq('action', 'terms_accepted')
+    .limit(50);
+  if (error) throw error;
+
+  const accepted = (data || []).some((r) => r.details && r.details.version === TERMS_VERSION);
+  return res.status(200).json({ accepted, version: TERMS_VERSION });
+}
+
+async function handleTermsAccept(req, res) {
+  const session = requireAuth(req, res);
+  if (!session) return;
+
+  const { version } = req.body || {};
+  if (version !== TERMS_VERSION) {
+    return res.status(409).json({ error: 'The Terms were updated. Reload the page and sign in again to review them.' });
+  }
+
+  // Not best-effort like logAdminAction: if the agreement can't be
+  // recorded, say so rather than pretending it was.
+  const { error } = await supabase.from('admin_logs').insert({
+    actor_id: session.sub,
+    action: 'terms_accepted',
+    target_id: session.sub,
+    details: {
+      version: TERMS_VERSION,
+      ip: getClientIp(req),
+      userAgent: req.headers['user-agent'] || 'unknown',
+      acceptedAt: new Date().toISOString(),
+    },
+  });
+  if (error) throw error;
+  return res.status(200).json({ ok: true });
+}
+
 /* ── Finance Command Center: real numbers from `expenses`, `tax_records`,
    and `returns` — the ONLY financial tables that currently exist. No
    profit/margin figures here since `product_costs` has no rows yet; once
@@ -1187,7 +1236,70 @@ async function handleSystemStatus(req, res) {
    NOTE: flipping this flag only records intent + notifies via Telegram —
    your storefront (index.html or wherever it's served from) needs to
    actually check this flag server-side and redirect/serve a backup page
-   when it's on. This endpoint is the source of truth for that check. ── */
+   when it's on. This endpoint is the source of truth for that check.
+
+   Cooldown auto-off: turning maintenance ON can carry an optional
+   cooldown (5 / 10 / 30 min), stored as cooldown_seconds + cooldown_ends_at
+   on the same row. There is no reliable always-on background timer on
+   serverless/Vercel Hobby (cron there is capped at once/day — see the
+   Daily Cron Brief note further down), so this is CHECKED rather than
+   scheduled: every read of status (this endpoint — polled by the admin
+   panel every few seconds while the Maintenance tab is open — plus the
+   Telegram /status command) lazily flips the switch back off the moment
+   the cooldown has passed. In practice that means the flip happens within
+   a few seconds of the timer hitting zero as long as an admin has the
+   panel open somewhere (or the very next time anyone checks), not at the
+   exact instant the countdown reaches 00:00 with nobody watching at all.
+   While a cooldown is running, Super Admin can push it back with fixed
+   +5 minute extensions (maintenance-extend) rather than picking a new
+   duration from scratch.
+
+   Requires adding two columns to the existing store_maintenance_status
+   table (run once via the Supabase SQL editor):
+
+     alter table store_maintenance_status add column if not exists cooldown_seconds integer;
+     alter table store_maintenance_status add column if not exists cooldown_ends_at timestamptz;
+── */
+const MAINTENANCE_COOLDOWN_PRESETS_MIN = [5, 10, 30];
+const MAINTENANCE_EXTEND_MINUTES = 5;
+
+// Cooldown auto-off is CHECKED on every read, not scheduled — see the
+// comment above. Given the freshest row, flips is_on back to false (and
+// clears the cooldown fields) if its cooldown has passed, and returns the
+// resulting row (unchanged if nothing needed to happen).
+async function maybeAutoExpireMaintenance(row) {
+  if (!row || !row.is_on || !row.cooldown_ends_at) return row;
+  if (new Date(row.cooldown_ends_at) > new Date()) return row;
+
+  await applyMaintenanceChange({ on: false, reason: '', changedBy: 'System (cooldown timer)' });
+  return { is_on: false, reason: null, cooldown_seconds: null, cooldown_ends_at: null, updated_at: new Date().toISOString() };
+}
+
+// PUBLIC — no auth required. This is what the storefront's middleware.js
+// calls, on every page request, to decide whether to show the real site or
+// the maintenance page. Deliberately returns only on/reason — no cooldown
+// timestamps, no "changed by", nothing an anonymous visitor should see.
+// Side benefit: real storefront traffic now also runs the same lazy
+// cooldown-expiry check the admin panel does, so with live visitors the
+// cooldown actually flips off within moments of hitting zero, not just
+// "whenever an admin's panel happens to poll next."
+async function handleMaintenancePublicStatus(req, res) {
+  const { data, error } = await supabase
+    .from('store_maintenance_status')
+    .select('is_on, reason, cooldown_seconds, cooldown_ends_at, updated_at')
+    .eq('id', 1)
+    .maybeSingle();
+  if (error) throw error;
+
+  const current = await maybeAutoExpireMaintenance(data);
+
+  res.setHeader('Cache-Control', 'no-store');
+  return res.status(200).json({
+    on: !!(current && current.is_on),
+    reason: current ? current.reason : null,
+  });
+}
+
 async function handleMaintenanceStatus(req, res) {
   const session = requireAuth(req, res);
   if (!session) return;
@@ -1197,26 +1309,43 @@ async function handleMaintenanceStatus(req, res) {
 
   const { data, error } = await supabase
     .from('store_maintenance_status')
-    .select('is_on, reason, updated_at')
+    .select('is_on, reason, cooldown_seconds, cooldown_ends_at, updated_at')
     .eq('id', 1)
     .maybeSingle();
   if (error) throw error;
 
+  const current = await maybeAutoExpireMaintenance(data);
+
   return res.status(200).json({
-    on: !!(data && data.is_on),
-    reason: data ? data.reason : null,
-    updatedAt: data ? data.updated_at : null,
+    on: !!(current && current.is_on),
+    reason: current ? current.reason : null,
+    cooldownSeconds: current ? current.cooldown_seconds : null,
+    cooldownEndsAt: current ? current.cooldown_ends_at : null,
+    updatedAt: current ? current.updated_at : null,
   });
 }
 
 // Shared by both the admin-panel toggle (below) and the Telegram webhook,
 // so there is exactly one code path that ever writes the actual state.
-async function applyMaintenanceChange({ on, reason, changedBy }) {
+// cooldownSeconds is only meaningful when on === true; turning off (by any
+// path — manual, Telegram, or the auto-expiry check above) always clears
+// the cooldown fields so a stale timer never lingers into the next session.
+async function applyMaintenanceChange({ on, reason, changedBy, cooldownSeconds }) {
   const finalReason = on ? reason.trim() : null;
+  const finalCooldownSeconds = on ? (cooldownSeconds || null) : null;
+  const cooldownEndsAt = finalCooldownSeconds ? new Date(Date.now() + finalCooldownSeconds * 1000).toISOString() : null;
 
   const { error: upsertError } = await supabase
     .from('store_maintenance_status')
-    .upsert({ id: 1, is_on: on, reason: finalReason, updated_by: changedBy, updated_at: new Date().toISOString() });
+    .upsert({
+      id: 1,
+      is_on: on,
+      reason: finalReason,
+      cooldown_seconds: finalCooldownSeconds,
+      cooldown_ends_at: cooldownEndsAt,
+      updated_by: changedBy,
+      updated_at: new Date().toISOString(),
+    });
   if (upsertError) throw upsertError;
 
   await supabase.from('store_maintenance_log').insert({
@@ -1225,7 +1354,7 @@ async function applyMaintenanceChange({ on, reason, changedBy }) {
     changed_by: changedBy,
   });
 
-  return { on, reason: finalReason };
+  return { on, reason: finalReason, cooldownSeconds: finalCooldownSeconds, cooldownEndsAt };
 }
 
 async function handleMaintenanceToggle(req, res) {
@@ -1235,7 +1364,7 @@ async function handleMaintenanceToggle(req, res) {
     return res.status(403).json({ error: 'Super Admin only.' });
   }
 
-  const { on, reason } = req.body || {};
+  const { on, reason, cooldownMinutes } = req.body || {};
   if (typeof on !== 'boolean') {
     return res.status(400).json({ error: '"on" (boolean) is required.' });
   }
@@ -1243,7 +1372,15 @@ async function handleMaintenanceToggle(req, res) {
     return res.status(400).json({ error: 'A reason is required to turn maintenance mode on.' });
   }
 
-  const result = await applyMaintenanceChange({ on, reason: reason || '', changedBy: session.username });
+  let cooldownSeconds = null;
+  if (on && cooldownMinutes != null) {
+    if (!MAINTENANCE_COOLDOWN_PRESETS_MIN.includes(cooldownMinutes)) {
+      return res.status(400).json({ error: 'cooldownMinutes must be one of: ' + MAINTENANCE_COOLDOWN_PRESETS_MIN.join(', ') });
+    }
+    cooldownSeconds = cooldownMinutes * 60;
+  }
+
+  const result = await applyMaintenanceChange({ on, reason: reason || '', changedBy: session.username, cooldownSeconds });
 
   // Uses its OWN dedicated bot (TELEGRAM_BOT_TOKEN_MAINTENANCE /
   // TELEGRAM_CHAT_ID_MAINTENANCE) — separate from the login-alert bot
@@ -1257,7 +1394,7 @@ async function handleMaintenanceToggle(req, res) {
     if (token && chatId) {
       const time = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
       const text = on
-        ? `🔴 Maintenance Mode turned ON by ${session.username}\nReason: ${result.reason}\nTime: ${time}`
+        ? `🔴 Maintenance Mode turned ON by ${session.username}\nReason: ${result.reason}${result.cooldownSeconds ? `\nAuto-off in: ${result.cooldownSeconds / 60} min` : ''}\nTime: ${time}`
         : `🟢 Maintenance Mode turned OFF by ${session.username}\nTime: ${time}`;
       await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: 'POST',
@@ -1270,6 +1407,51 @@ async function handleMaintenanceToggle(req, res) {
   }
 
   return res.status(200).json(result);
+}
+
+// "+5 min" — pushes an already-running cooldown further out by a fixed
+// 5-minute step (stacking presses = +5, +5, +5, ...) rather than letting
+// the Super Admin pick an arbitrary new duration mid-session.
+async function handleMaintenanceExtend(req, res) {
+  const session = requireAuth(req, res);
+  if (!session) return;
+  if (session.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Super Admin only.' });
+  }
+
+  const { data, error } = await supabase
+    .from('store_maintenance_status')
+    .select('is_on, reason, cooldown_seconds, cooldown_ends_at')
+    .eq('id', 1)
+    .maybeSingle();
+  if (error) throw error;
+
+  const current = await maybeAutoExpireMaintenance(data);
+  if (!current || !current.is_on) {
+    return res.status(400).json({ error: 'Maintenance mode is not currently on.' });
+  }
+  if (!current.cooldown_ends_at) {
+    return res.status(400).json({ error: 'This session has no cooldown timer running to extend.' });
+  }
+
+  const addSeconds = MAINTENANCE_EXTEND_MINUTES * 60;
+  const base = new Date(current.cooldown_ends_at) > new Date() ? new Date(current.cooldown_ends_at) : new Date();
+  const newEndsAt = new Date(base.getTime() + addSeconds * 1000).toISOString();
+  const newCooldownSeconds = (current.cooldown_seconds || 0) + addSeconds;
+
+  const { error: updateError } = await supabase
+    .from('store_maintenance_status')
+    .update({ cooldown_ends_at: newEndsAt, cooldown_seconds: newCooldownSeconds, updated_by: session.username, updated_at: new Date().toISOString() })
+    .eq('id', 1);
+  if (updateError) throw updateError;
+
+  await supabase.from('store_maintenance_log').insert({
+    is_on: true,
+    reason: current.reason ? `${current.reason} (cooldown +${MAINTENANCE_EXTEND_MINUTES} min)` : `Cooldown +${MAINTENANCE_EXTEND_MINUTES} min`,
+    changed_by: session.username,
+  });
+
+  return res.status(200).json({ success: true, cooldownEndsAt: newEndsAt, cooldownSeconds: newCooldownSeconds });
 }
 
 // Two-way control: the Maintenance Mode bot can flip the switch, not just
@@ -1322,8 +1504,15 @@ async function handleMaintenanceTelegramWebhook(req, res) {
 
   try {
     if (/^\/status\b/i.test(text)) {
-      const { data } = await supabase.from('store_maintenance_status').select('is_on, reason, updated_at').eq('id', 1).maybeSingle();
-      const statusText = data && data.is_on ? `🔴 DOWN — ${data.reason || 'no reason recorded'}` : '🟢 LIVE';
+      const { data } = await supabase.from('store_maintenance_status').select('is_on, reason, cooldown_seconds, cooldown_ends_at, updated_at').eq('id', 1).maybeSingle();
+      const current = await maybeAutoExpireMaintenance(data);
+      let statusText = '🟢 LIVE';
+      if (current && current.is_on) {
+        const cooldownNote = current.cooldown_ends_at
+          ? ` (auto-off in ~${Math.max(0, Math.round((new Date(current.cooldown_ends_at) - Date.now()) / 60000))} min)`
+          : '';
+        statusText = `🔴 DOWN — ${current.reason || 'no reason recorded'}${cooldownNote}`;
+      }
       await reply(`Current status: ${statusText}`);
       return res.status(200).json({ ok: true });
     }
@@ -2016,6 +2205,193 @@ async function handleNoteDelete(req, res) {
   const { error } = await supabase.from('admin_notes').delete().eq('id', id).eq('admin_id', session.sub);
   if (error) throw error;
   return res.status(200).json({ success: true });
+}
+
+/* ── Theme Palettes: Super-Admin-managed color themes, assignable PER ROLE
+   across both the Super Admin seat and every Sub Admin org-title seat (COO,
+   CTO, CFO, ...). A palette isn't just "on" or "off" globally — the Super
+   Admin picks which specific role(s) a given palette themes, so different
+   seats can run different palettes (or share one) at the same time.
+
+   'role_title' values used as keys throughout: the literal string
+   'super_admin' for the Super Admin seat, or one of ORG_TITLES (COO, CTO,
+   CFO, CMO, CLO, CHRO, CAIO, CDO (Design), CPO, CECO, CCO, CDO (Data)) for a
+   Sub Admin seat. A role with no row / a null active_palette_id just means
+   "use the built-in default theme".
+
+   Only Super Admin can list/create/delete/assign palettes. Any
+   authenticated admin (Super or Sub) can read the palette assigned to
+   THEIR OWN role, via palette-active — that's what lets a Sub Admin's
+   dashboard pick up whatever the Super Admin assigned to their seat.
+
+   Requires these two Supabase tables (create once via the SQL editor):
+
+     create table color_palettes (
+       id uuid primary key default gen_random_uuid(),
+       name text not null,
+       colors jsonb not null,
+       created_by text,
+       created_at timestamptz not null default now()
+     );
+
+     create table admin_theme_assignments (
+       role_title text primary key,
+       active_palette_id uuid references color_palettes(id) on delete set null,
+       updated_by text,
+       updated_at timestamptz
+     );
+
+   NOTE: if you previously created a `store_theme_status` table for an
+   earlier single-global-theme version of this feature, it's no longer used
+   and can be dropped (or just left alone — nothing reads it anymore).
+── */
+const PALETTE_KEYS = ['gold', 'goldLight', 'goldDark', 'black', 'dark', 'dark2', 'bone', 'gray'];
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+const SUPER_ADMIN_ROLE_KEY = 'super_admin';
+const PALETTE_ROLE_KEYS = [SUPER_ADMIN_ROLE_KEY, ...ORG_TITLES];
+
+function sanitizePaletteColors(colors) {
+  if (!colors || typeof colors !== 'object') return null;
+  const clean = {};
+  for (const key of PALETTE_KEYS) {
+    const val = colors[key];
+    if (typeof val !== 'string' || !HEX_COLOR_RE.test(val)) return null;
+    clean[key] = val.toLowerCase();
+  }
+  return clean;
+}
+
+// Validates the "roles" array sent from the client against the known set
+// (Super Admin + every org title), de-duplicated, in a stable order.
+function sanitizePaletteRoles(roles) {
+  if (!Array.isArray(roles) || !roles.length) return null;
+  const unique = [...new Set(roles)];
+  if (unique.some((r) => !PALETTE_ROLE_KEYS.includes(r))) return null;
+  return unique;
+}
+
+async function handlePaletteList(req, res) {
+  const session = requireAuth(req, res);
+  if (!session) return;
+  if (session.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Super Admin only.' });
+  }
+  const { data: palettes, error } = await supabase
+    .from('color_palettes')
+    .select('id, name, colors, created_by, created_at')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+
+  const { data: rows } = await supabase.from('admin_theme_assignments').select('role_title, active_palette_id');
+  const assignments = {};
+  (rows || []).forEach((r) => { assignments[r.role_title] = r.active_palette_id; });
+
+  return res.status(200).json({ palettes: palettes || [], roles: PALETTE_ROLE_KEYS, assignments });
+}
+
+async function handlePaletteCreate(req, res) {
+  const session = requireAuth(req, res);
+  if (!session) return;
+  if (session.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Super Admin only.' });
+  }
+  const { name, colors } = req.body || {};
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: 'A palette name is required.' });
+  }
+  const clean = sanitizePaletteColors(colors);
+  if (!clean) {
+    return res.status(400).json({ error: 'colors must include valid 6-digit hex values for: ' + PALETTE_KEYS.join(', ') });
+  }
+  const { data, error } = await supabase
+    .from('color_palettes')
+    .insert({ name: name.trim().slice(0, 60), colors: clean, created_by: session.username || session.sub })
+    .select('id, name, colors, created_by, created_at')
+    .single();
+  if (error) throw error;
+  return res.status(200).json({ palette: data });
+}
+
+async function handlePaletteDelete(req, res) {
+  const session = requireAuth(req, res);
+  if (!session) return;
+  if (session.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Super Admin only.' });
+  }
+  const { id } = req.body || {};
+  if (!id) return res.status(400).json({ error: 'id is required.' });
+
+  // Any role currently themed by this palette falls back to the default
+  // theme rather than being left with a dangling reference.
+  await supabase.from('admin_theme_assignments').update({
+    active_palette_id: null, updated_by: session.username || session.sub, updated_at: new Date().toISOString(),
+  }).eq('active_palette_id', id);
+
+  const { error } = await supabase.from('color_palettes').delete().eq('id', id);
+  if (error) throw error;
+  return res.status(200).json({ success: true });
+}
+
+// Assigns one palette (or null, meaning "reset to default") to one or more
+// roles at once — this is the "select sub admin role(s) to apply the
+// palette to, plus an option for Super Admin" step.
+async function handlePaletteActivate(req, res) {
+  const session = requireAuth(req, res);
+  if (!session) return;
+  if (session.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Super Admin only.' });
+  }
+  const { id, roles } = req.body || {};
+
+  const cleanRoles = sanitizePaletteRoles(roles);
+  if (!cleanRoles) {
+    return res.status(400).json({ error: 'Select at least one role (Super Admin and/or a Sub Admin role) to apply this to.' });
+  }
+
+  if (id) {
+    const { data: palette, error: findError } = await supabase.from('color_palettes').select('id').eq('id', id).maybeSingle();
+    if (findError) throw findError;
+    if (!palette) return res.status(404).json({ error: 'Palette not found.' });
+  }
+
+  const now = new Date().toISOString();
+  const rows = cleanRoles.map((roleTitle) => ({
+    role_title: roleTitle, active_palette_id: id || null, updated_by: session.username || session.sub, updated_at: now,
+  }));
+  const { error } = await supabase.from('admin_theme_assignments').upsert(rows, { onConflict: 'role_title' });
+  if (error) throw error;
+  return res.status(200).json({ success: true, activePaletteId: id || null, roles: cleanRoles });
+}
+
+// Readable by ANY authenticated admin (Super or Sub) — resolves the
+// requesting admin's OWN role_title and returns whatever palette the Super
+// Admin assigned to that seat (or null for "use the default theme").
+async function handleActivePalette(req, res) {
+  const session = requireAuth(req, res);
+  if (!session) return;
+
+  let roleTitle = SUPER_ADMIN_ROLE_KEY;
+  if (session.role !== 'super_admin') {
+    const { data: admin } = await supabase.from('admins').select('org_title').eq('id', session.sub).maybeSingle();
+    if (!admin || !admin.org_title) return res.status(200).json({ palette: null });
+    roleTitle = admin.org_title;
+  }
+
+  const { data: assignment } = await supabase
+    .from('admin_theme_assignments')
+    .select('active_palette_id')
+    .eq('role_title', roleTitle)
+    .maybeSingle();
+  if (!assignment || !assignment.active_palette_id) {
+    return res.status(200).json({ palette: null });
+  }
+  const { data: palette, error } = await supabase
+    .from('color_palettes')
+    .select('id, name, colors')
+    .eq('id', assignment.active_palette_id)
+    .maybeSingle();
+  if (error) throw error;
+  return res.status(200).json({ palette: palette || null });
 }
 
 /* ── Daily Cron brief: the genuine "works on its own" piece. Vercel Hobby
@@ -3207,13 +3583,17 @@ module.exports = async function handler(req, res) {
   try {
     if (req.method === 'POST' && action === 'login') return await handleLogin(req, res);
     if (req.method === 'POST' && action === 'update-location') return await handleUpdateLocation(req, res);
+    if (req.method === 'GET' && action === 'terms-status') return await handleTermsStatus(req, res);
+    if (req.method === 'POST' && action === 'terms-accept') return await handleTermsAccept(req, res);
     if (req.method === 'GET' && action === 'dashboard') return await handleDashboard(req, res);
     if (req.method === 'GET' && action === 'login-logs') return await handleLoginLogs(req, res);
     if (req.method === 'POST' && action === 'assistant') return await handleAssistant(req, res);
     if (req.method === 'GET' && action === 'system-status') return await handleSystemStatus(req, res);
     if (req.method === 'GET' && action === 'integrations-status') return await handleIntegrationsStatus(req, res);
     if (req.method === 'GET' && action === 'maintenance-status') return await handleMaintenanceStatus(req, res);
+    if (req.method === 'GET' && action === 'maintenance-public-status') return await handleMaintenancePublicStatus(req, res);
     if (req.method === 'POST' && action === 'maintenance-toggle') return await handleMaintenanceToggle(req, res);
+    if (req.method === 'POST' && action === 'maintenance-extend') return await handleMaintenanceExtend(req, res);
     if (req.method === 'GET' && action === 'maintenance-history') return await handleMaintenanceHistory(req, res);
     if (req.method === 'POST' && action === 'maintenance-webhook') return await handleMaintenanceTelegramWebhook(req, res);
     if (req.method === 'POST' && action === 'face-challenge-verify') return await handleFaceChallengeVerify(req, res);
@@ -3246,6 +3626,11 @@ module.exports = async function handler(req, res) {
     if (req.method === 'POST' && action === 'notes-create') return await handleNoteCreate(req, res);
     if (req.method === 'POST' && action === 'notes-update') return await handleNoteUpdate(req, res);
     if (req.method === 'POST' && action === 'notes-delete') return await handleNoteDelete(req, res);
+    if (req.method === 'GET' && action === 'palette-list') return await handlePaletteList(req, res);
+    if (req.method === 'POST' && action === 'palette-create') return await handlePaletteCreate(req, res);
+    if (req.method === 'POST' && action === 'palette-delete') return await handlePaletteDelete(req, res);
+    if (req.method === 'POST' && action === 'palette-activate') return await handlePaletteActivate(req, res);
+    if (req.method === 'GET' && action === 'palette-active') return await handleActivePalette(req, res);
     if (req.method === 'GET' && action === 'cron-daily-brief') return await handleCronDailyBrief(req, res);
     if (req.method === 'GET' && action === 'cron-weekly-strategy') return await handleCronWeeklyStrategy(req, res);
     if (req.method === 'GET' && action === 'cron-weekly-pricing-check') return await handleCronWeeklyPricingCheck(req, res);
