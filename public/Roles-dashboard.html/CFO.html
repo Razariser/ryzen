@@ -6,40 +6,665 @@
 <meta name="robots" content="noindex, nofollow" />
 <title>CFO Dashboard — Razariser</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Montserrat:wght@600;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="_shared.css" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F3F5FA; --surface:#FFFFFF; --surface-2:#F5F7FC; --border:#E3E7F0;
+    --ink:#12182B; --ink-soft:#57607A; --muted:#8990A6;
+    --brand:#3253E5; --brand-soft:#EAEEFE; --brand-ink:#22348C;
+    --green:#149368; --green-soft:#E4F6EF;
+    --amber:#C97A1F; --amber-soft:#FBF0DF;
+    --red:#D14545; --red-soft:#FBE9E8;
+    --purple:#7454D8; --purple-soft:#EFEAFC;
+    --radius:14px; --radius-sm:9px;
+    --shadow:0 1px 2px rgba(18,24,43,.04), 0 8px 24px -12px rgba(18,24,43,.10);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:'Inter',system-ui,-apple-system,sans-serif;
+    font-size:14.5px; line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3{font-family:'Sora',system-ui,sans-serif; margin:0; letter-spacing:-0.01em;}
+  a{color:inherit;}
+  button{font-family:inherit;}
+
+  /* ---------- top bar ---------- */
+  .top{
+    position:sticky; top:0; z-index:30;
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:14px 22px; background:rgba(255,255,255,.92); backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--border);
+  }
+  .brand{display:flex; align-items:center; gap:10px;}
+  .brand .mark{
+    width:32px; height:32px; border-radius:9px; background:linear-gradient(135deg,var(--brand),var(--purple));
+    display:flex; align-items:center; justify-content:center; color:#fff; font-family:'Sora'; font-weight:700; font-size:15px;
+  }
+  .brand .name{font-family:'Sora'; font-weight:700; font-size:16px;}
+  .brand .sub{font-size:11.5px; color:var(--muted); margin-top:-1px;}
+  .tools{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+  .btn{
+    appearance:none; border:1px solid var(--border); background:var(--surface); color:var(--ink);
+    font-size:13px; font-weight:600; padding:8px 13px; border-radius:9px; cursor:pointer;
+    display:inline-flex; align-items:center; gap:6px; text-decoration:none; white-space:nowrap;
+    transition:border-color .15s, background .15s;
+  }
+  .btn:hover{border-color:#C6CCDC; background:var(--surface-2);}
+  .btn:disabled{opacity:.55; cursor:default;}
+  .btn.primary{background:var(--brand); border-color:var(--brand); color:#fff;}
+  .btn.primary:hover{background:var(--brand-ink); border-color:var(--brand-ink);}
+  .select{
+    appearance:none; border:1px solid var(--border); background:var(--surface); color:var(--ink);
+    font-size:13px; font-weight:600; padding:8px 30px 8px 12px; border-radius:9px; cursor:pointer;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2357607A' stroke-width='1.5' fill='none' fill-rule='evenodd'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 12px center;
+  }
+
+  /* ---------- wrap / hero ---------- */
+  .wrap{max-width:1180px; margin:0 auto; padding:24px 22px 64px;}
+  .hero{padding:6px 0 18px;}
+  .hero h1{font-size:26px; font-weight:800;}
+  .hero .who{color:var(--muted); font-size:13px; margin-top:5px;}
+  .chips{display:flex; flex-wrap:wrap; gap:7px; margin-top:14px;}
+  .chip{
+    font-size:12px; font-weight:600; color:var(--ink-soft); background:var(--surface);
+    border:1px solid var(--border); padding:5px 11px; border-radius:999px;
+  }
+  .navrow{display:flex; gap:7px; flex-wrap:wrap; margin-top:16px;}
+  .navrow a{
+    font-size:12.5px; font-weight:700; color:var(--brand-ink); background:var(--brand-soft);
+    padding:7px 13px; border-radius:999px; text-decoration:none;
+  }
+  .navrow a:hover{background:#DFE5FD;}
+
+  /* ---------- loading / problem states ---------- */
+  .loading, .center{
+    text-align:center; padding:80px 20px; color:var(--muted);
+  }
+  .center h2{font-size:19px; margin-bottom:8px; color:var(--ink);}
+  .center p{margin:0 0 16px;}
+  .center .btn{margin:0 4px;}
+
+  /* ---------- kpi tiles ---------- */
+  .kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; margin-bottom:22px;}
+  .kpi{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+    padding:16px 17px; box-shadow:var(--shadow);
+  }
+  .kpi .icon{
+    width:30px; height:30px; border-radius:8px; display:flex; align-items:center; justify-content:center;
+    font-size:15px; margin-bottom:12px;
+  }
+  .kpi.brand .icon{background:var(--brand-soft); color:var(--brand-ink);}
+  .kpi.green .icon{background:var(--green-soft); color:var(--green);}
+  .kpi.amber .icon{background:var(--amber-soft); color:var(--amber);}
+  .kpi.purple .icon{background:var(--purple-soft); color:var(--purple);}
+  .kpi.red .icon{background:var(--red-soft); color:var(--red);}
+  .kpi .v{font-family:'Sora'; font-size:22px; font-weight:700; letter-spacing:-0.01em; font-variant-numeric:tabular-nums;}
+  .kpi .l{font-size:12.5px; color:var(--ink-soft); font-weight:600; margin-top:3px;}
+  .kpi .s{font-size:12px; color:var(--muted); margin-top:7px;}
+  .kpi .s.up{color:var(--green);} .kpi .s.down{color:var(--red);}
+
+  /* ---------- sections / cards ---------- */
+  .section{scroll-margin-top:74px; margin-bottom:22px;}
+  .card{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+    box-shadow:var(--shadow); overflow:hidden;
+  }
+  .card header{
+    display:flex; align-items:baseline; justify-content:space-between; gap:10px;
+    padding:16px 20px 0;
+  }
+  .card header h2{font-size:15.5px; font-weight:700;}
+  .card header .aside{font-size:12px; color:var(--muted); font-weight:600;}
+  .card .body{padding:16px 20px 20px;}
+  .cols{display:grid; gap:14px;}
+  .cols.two{grid-template-columns:1fr 1fr;}
+  .cols.three{grid-template-columns:repeat(3,1fr);}
+  @media (max-width:760px){ .cols.two, .cols.three{grid-template-columns:1fr;} }
+
+  .note{background:var(--surface-2); border:1px dashed var(--border); border-radius:var(--radius-sm); padding:13px 15px; color:var(--ink-soft); font-size:13px;}
+  .note.bad{background:var(--red-soft); border-color:#F3C6C3; color:#8C2E29;}
+
+  /* ---------- pills ---------- */
+  .pill{display:inline-flex; align-items:center; font-size:11.5px; font-weight:700; padding:3px 9px; border-radius:999px; text-transform:capitalize;}
+  .pill.ok{background:var(--green-soft); color:var(--green);}
+  .pill.warn{background:var(--amber-soft); color:var(--amber);}
+  .pill.bad{background:var(--red-soft); color:var(--red);}
+  .pill.muted{background:var(--surface-2); color:var(--ink-soft);}
+
+  /* ---------- bars ---------- */
+  .bar-row{display:grid; grid-template-columns:110px 1fr 82px; align-items:center; gap:10px; padding:6px 0;}
+  .bar-row .name{font-size:12.5px; font-weight:600; color:var(--ink-soft); text-transform:capitalize; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .bar-row .track{height:8px; background:var(--surface-2); border-radius:999px; overflow:hidden;}
+  .bar-row .fill{height:100%; border-radius:999px; background:var(--brand);}
+  .bar-row .fill.ok{background:var(--green);} .bar-row .fill.warn{background:var(--amber);} .bar-row .fill.bad{background:var(--red);}
+  .bar-row .val{font-size:12.5px; font-weight:700; text-align:right; font-variant-numeric:tabular-nums;}
+
+  /* ---------- budget rows ---------- */
+  .budget-row{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 0; border-top:1px solid var(--border);}
+  .budget-row:first-child{border-top:none;}
+  .budget-row .cat{font-size:13px; font-weight:600;}
+  .budget-row .nums{font-size:12.5px; color:var(--muted); font-variant-numeric:tabular-nums;}
+  .budget-row .nums b{color:var(--ink); font-weight:700;}
+  .budget-track{height:7px; background:var(--surface-2); border-radius:999px; overflow:hidden; margin-top:6px;}
+  .budget-fill{height:100%; border-radius:999px; background:var(--brand);}
+  .budget-fill.over{background:var(--red);}
+
+  /* ---------- table ---------- */
+  .scroll{overflow-x:auto;}
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  th{
+    text-align:left; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em;
+    color:var(--muted); padding:0 12px 10px; border-bottom:1px solid var(--border); white-space:nowrap;
+  }
+  td{padding:10px 12px; border-bottom:1px solid var(--border); white-space:nowrap;}
+  tr:last-child td{border-bottom:none;}
+  th.num, td.num{text-align:right; font-variant-numeric:tabular-nums;}
+
+  /* ---------- chart ---------- */
+  .chart-wrap{display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap;}
+  svg.chart{flex:1 1 320px; min-width:280px; overflow:visible;}
+  .legend{display:flex; gap:16px; margin-top:10px; flex-wrap:wrap;}
+  .legend span{display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--ink-soft); font-weight:600;}
+  .legend i{width:9px; height:9px; border-radius:3px; display:inline-block;}
+  .snapshot{min-width:160px; border-left:1px solid var(--border); padding-left:18px;}
+  .snapshot .t{font-size:11.5px; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:.03em;}
+  .snapshot .n{font-family:'Sora'; font-size:19px; font-weight:700; margin-top:8px;}
+  .snapshot .n.small{font-size:16px; margin-top:14px;}
+  @media (max-width:640px){ .snapshot{border-left:none; border-top:1px solid var(--border); padding-left:0; padding-top:14px; margin-top:4px;} }
+
+  /* ---------- add form ---------- */
+  details.add{border-top:1px solid var(--border); margin-top:14px; padding-top:14px;}
+  details.add summary{
+    cursor:pointer; font-size:13px; font-weight:700; color:var(--brand-ink); list-style:none; display:flex; align-items:center; gap:6px;
+  }
+  details.add summary::-webkit-details-marker{display:none;}
+  details.add summary::before{content:'+'; font-size:15px; line-height:1;}
+  details.add[open] summary::before{content:'–';}
+  form.rd-form{display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-top:14px;}
+  form.rd-form label{display:flex; flex-direction:column; gap:6px; font-size:12px; font-weight:600; color:var(--ink-soft);}
+  form.rd-form input, form.rd-form select, form.rd-form textarea{
+    font-family:inherit; font-size:13.5px; color:var(--ink); border:1px solid var(--border); border-radius:8px;
+    padding:9px 10px; background:var(--surface-2);
+  }
+  form.rd-form textarea{resize:vertical; min-height:46px;}
+  form.rd-form input:focus, form.rd-form select:focus, form.rd-form textarea:focus{outline:2px solid var(--brand); outline-offset:0; background:var(--surface);}
+  form.rd-form > .btn{grid-column:1/-1; justify-self:start; margin-top:2px;}
+  .rd-msg{grid-column:1/-1; font-size:12.5px; color:var(--red); min-height:0;}
+
+  /* ---------- toast ---------- */
+  .toast{
+    position:fixed; left:50%; bottom:26px; transform:translateX(-50%);
+    background:var(--ink); color:#fff; font-size:13px; font-weight:600; padding:10px 18px; border-radius:999px;
+    box-shadow:0 10px 30px rgba(18,24,43,.28); z-index:50; opacity:0; animation:toastin .2s ease forwards;
+  }
+  .toast.bad{background:var(--red);} .toast.ok{background:var(--green);}
+  @keyframes toastin{ to{opacity:1;} }
+
+  ::-webkit-scrollbar{height:8px; width:8px;}
+  ::-webkit-scrollbar-thumb{background:#D4D9E6; border-radius:999px;}
+
+  @media (prefers-reduced-motion: reduce){ *{animation-duration:.001s !important; transition:none !important;} }
+</style>
 </head>
 <body>
-<div id="rd-app"></div>
-<script src="_shared.js"></script>
+<div class="top">
+  <div class="brand">
+    <div class="mark">R</div>
+    <div><div class="name">Razariser</div><div class="sub">CFO Dashboard</div></div>
+  </div>
+  <div class="tools" id="tools"></div>
+</div>
+<div class="wrap">
+  <div id="hero" class="hero"><h1>CFO dashboard</h1></div>
+  <div id="body"><div class="loading">Loading your dashboard…</div></div>
+</div>
+
 <script>
-// CFO dashboard. Data comes from Roles-dashboard.js/CFO.js via
-// /api/admin?action=role-dashboard — this file only decides how it looks.
-RD.boot({
-  role: 'CFO',
-  render: function (d) {
-    var R = RD, esc = R.esc, inr = R.inr, num = R.num, pct = R.pct, ago = R.ago, html = R.html, when = R.when;
-    return R.na(d.orders, function (o) {
-      var s = o.summary;
-      var tiles = R.grid([
-        R.stat('Revenue', inr(s.revenue), 'Paid, shipped and delivered orders'),
-        R.stat('Paid orders', num(s.paidCount)),
-        R.stat('Average order value', inr(s.avgOrderValue)),
-        R.stat('Last 7 days', inr(o.last7.revenue), R.change(o.last7.revenue, o.prev7.revenue)),
-        R.stat('Last 30 days', inr(o.last30.revenue), num(o.last30.orders) + ' orders'),
-      ]);
-      var money = R.grid([
-        R.stat('Started, not paid', inr(s.unpaidValue), 'Checkouts still open', s.unpaidValue ? 'warn' : ''),
-        R.stat('Refunded', inr(s.refundedValue), '', s.refundedValue ? 'bad' : ''),
-        R.stat('Cancelled', inr(s.cancelledValue), '', s.cancelledValue ? 'warn' : ''),
-      ]);
-      var trend = s.paidCount ? R.trend(o.trend30, 'revenue', inr) : R.empty('No paid orders yet, so there is no revenue trend to draw.');
-      var trunc = s.truncated ? R.note('Showing the most recent 5,000 orders only.') : '';
-      return tiles + R.section('Revenue, last 30 days', trend, 'Per day') +
-        R.cols(2, [R.section('Money not collected', money), R.section('Orders by status', R.statusBars(s.byStatus))]) + trunc;
-    }, 'Order data');
+(function () {
+  'use strict';
+  var TOKEN_KEY = 'ryzen_admin_token';
+  var ADMIN_PANEL_URL = '/admin.html';
+  var ROLE = 'CFO';
+  var EXPENSE_CATEGORIES = ['Materials','Manufacturing','Salaries','Marketing','Shipping','Rent and utilities','Software','Legal and compliance','Other'];
+
+  /* ---------- formatting ---------- */
+  function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function inr(n){ return '₹' + Number(n || 0).toLocaleString('en-IN'); }
+  function inrShort(n){
+    n = Number(n || 0);
+    var a = Math.abs(n);
+    if (a >= 10000000) return (n/10000000).toFixed(2).replace(/\.00$/,'') + ' Cr';
+    if (a >= 100000) return (n/100000).toFixed(2).replace(/\.00$/,'') + ' L';
+    return inr(n);
   }
-});
+  function num(n){ return n == null ? '—' : Number(n).toLocaleString('en-IN'); }
+  function day(d){
+    if (!d) return '—';
+    var dt = new Date(String(d).slice(0,10) + 'T00:00:00Z');
+    return isNaN(dt.getTime()) ? '—' : dt.toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric', timeZone:'UTC' });
+  }
+  function monthLabel(m){
+    var dt = new Date(String(m).slice(0,7) + '-01T00:00:00Z');
+    return isNaN(dt.getTime()) ? String(m) : dt.toLocaleDateString('en-IN', { month:'short', year:'numeric', timeZone:'UTC' });
+  }
+  function label(v){ return String(v == null ? '' : v).replace(/_/g,' ').replace(/^./, function(c){ return c.toUpperCase(); }); }
+  function change(nowV, before){
+    if (!before) return nowV ? { text:'no earlier period to compare', tone:'' } : { text:'', tone:'' };
+    var d = Math.round((nowV - before) / before * 100);
+    if (d === 0) return { text:'no change vs previous 7 days', tone:'' };
+    return { text:(d > 0 ? '↑ ' : '↓ ') + Math.abs(d) + '% vs previous 7 days', tone:(d > 0 ? 'up' : 'down') };
+  }
+  function html(s){ return { __html:s }; }
+  function cell(v){ return v && typeof v === 'object' && v.__html !== undefined ? v.__html : esc(v); }
+
+  /* ---------- building blocks ---------- */
+  function kpi(label_, value, sub, tone, iconChar){
+    return '<div class="kpi ' + (tone||'brand') + '"><div class="icon">' + (iconChar||'●') + '</div>' +
+      '<div class="v">' + esc(value) + '</div><div class="l">' + esc(label_) + '</div>' +
+      (sub ? '<div class="s ' + (sub.tone||'') + '">' + esc(sub.text != null ? sub.text : sub) + '</div>' : '') + '</div>';
+  }
+  function section(id, title, aside, bodyHtml){
+    return '<div class="section" id="' + esc(id) + '"><div class="card"><header><h2>' + esc(title) + '</h2>' +
+      (aside ? '<span class="aside">' + esc(aside) + '</span>' : '') + '</header><div class="body">' + bodyHtml + '</div></div></div>';
+  }
+  function cols(n, cards){ return '<div class="cols ' + (n === 3 ? 'three' : 'two') + '">' + cards.join('') + '</div>'; }
+  function note(text, bad){ return '<div class="note' + (bad ? ' bad' : '') + '">' + text + '</div>'; }
+  function empty(text){ return note(esc(text)); }
+  function na(value, render, what){
+    if (value === null || value === undefined) return empty((what || 'This section') + " couldn't be loaded right now. Tap Refresh to try again. If this is a new section, its table may not be set up in Supabase yet.");
+    return render(value);
+  }
+  function pill(text, tone){ return '<span class="pill ' + (tone||'muted') + '">' + esc(text) + '</span>'; }
+
+  function table(headers, rows, emptyText){
+    if (!rows || !rows.length) return empty(emptyText || 'Nothing to show yet.');
+    var head = headers.map(function(h){ var o = typeof h === 'object' ? h : { label:h }; return '<th' + (o.num?' class="num"':'') + '>' + esc(o.label) + '</th>'; }).join('');
+    var body = rows.map(function(r){
+      return '<tr>' + r.map(function(c,i){ var h=headers[i]; var isNum = typeof h==='object' && h.num; return '<td' + (isNum?' class="num"':'') + '>' + cell(c) + '</td>'; }).join('') + '</tr>';
+    }).join('');
+    return '<div class="scroll"><table><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+  }
+
+  function statusTone(k){ return { paid:'ok', shipped:'ok', delivered:'ok', created:'warn', cancelled:'bad', refunded:'bad' }[k] || 'muted'; }
+  function statusBars(byStatus){
+    var items = Object.keys(byStatus || {}).map(function(k){ return { label:k, value:byStatus[k], tone:statusTone(k) }; }).sort(function(a,b){ return b.value - a.value; });
+    if (!items.length) return empty('No orders yet.');
+    var max = Math.max.apply(null, items.map(function(i){ return i.value; }).concat([1]));
+    return items.map(function(i){
+      return '<div class="bar-row"><span class="name">' + esc(i.label) + '</span>' +
+        '<span class="track"><span class="fill ' + i.tone + '" style="width:' + Math.max(2, Math.round(i.value/max*100)) + '%"></span></span>' +
+        '<span class="val">' + esc(num(i.value)) + '</span></div>';
+    }).join('');
+  }
+
+  // Last N days bar chart from trend points [{date, revenue, orders}]
+  function dailyChart(points){
+    var W = 640, H = 150, base = 122, slot = W / points.length;
+    var max = Math.max.apply(null, points.map(function(p){ return p.revenue; }).concat([1]));
+    var total = points.reduce(function(s,p){ return s + p.revenue; }, 0);
+    var bars = points.map(function(p, i){
+      var h = p.revenue ? Math.max(3, Math.round(p.revenue / max * (base - 10))) : 2;
+      return '<rect x="' + (i*slot+1).toFixed(1) + '" y="' + (base-h) + '" width="' + Math.max(2, slot-2).toFixed(1) + '" height="' + h + '" rx="2" fill="var(--brand)" opacity="' + (p.revenue ? '0.9' : '0.25') + '"><title>' + esc(p.date + ': ' + inr(p.revenue)) + '</title></rect>';
+    }).join('');
+    var first = points[0].date.slice(5), last = points[points.length-1].date.slice(5);
+    return '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Daily revenue over the last ' + points.length + ' days, total ' + esc(inr(total)) + '">' +
+      bars + '<line x1="0" y1="' + base + '" x2="' + W + '" y2="' + base + '" stroke="var(--border)" stroke-width="1"/>' +
+      '<text x="0" y="' + (H-4) + '" font-size="11" fill="var(--muted)">' + esc(first) + '</text>' +
+      '<text x="' + W + '" y="' + (H-4) + '" font-size="11" fill="var(--muted)" text-anchor="end">' + esc(last) + '</text></svg>';
+  }
+
+  // 6-month ledger: grouped bars (revenue vs expenses) + profit line
+  function ledgerChart(rows){
+    var W = 640, H = 190, base = 148, top = 14, slot = W / rows.length, gap = slot * 0.18;
+    var allVals = [];
+    rows.forEach(function(r){ allVals.push(r.revenue, r.expenses); });
+    var max = Math.max.apply(null, allVals.concat([1]));
+    var barW = (slot - gap*2) / 2;
+    var bars = rows.map(function(r, i){
+      var x0 = i*slot + gap;
+      var hr = r.revenue ? Math.max(2, (r.revenue/max) * (base-top)) : 1;
+      var he = r.expenses ? Math.max(2, (r.expenses/max) * (base-top)) : 1;
+      return '<rect x="' + x0.toFixed(1) + '" y="' + (base-hr).toFixed(1) + '" width="' + barW.toFixed(1) + '" height="' + hr.toFixed(1) + '" rx="2" fill="var(--brand)"><title>' + esc(monthLabel(r.month) + ' revenue: ' + inr(r.revenue)) + '</title></rect>' +
+        '<rect x="' + (x0+barW).toFixed(1) + '" y="' + (base-he).toFixed(1) + '" width="' + barW.toFixed(1) + '" height="' + he.toFixed(1) + '" rx="2" fill="var(--amber)"><title>' + esc(monthLabel(r.month) + ' expenses: ' + inr(r.expenses)) + '</title></rect>';
+    }).join('');
+    var profitMax = Math.max.apply(null, rows.map(function(r){ return Math.abs(r.profit); }).concat([1]));
+    var pts = rows.map(function(r, i){
+      var x = i*slot + slot/2;
+      var y = base - 6 - (r.profit / profitMax) * (base - top - 20) * 0.5 - (base-top)*0.25;
+      y = Math.max(top+4, Math.min(base-2, y));
+      return { x:x, y:y, r:r };
+    });
+    var line = pts.map(function(p,i){ return (i===0?'M':'L') + p.x.toFixed(1) + ' ' + p.y.toFixed(1); }).join(' ');
+    var dots = pts.map(function(p){ return '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="3.2" fill="var(--purple)"><title>' + esc(monthLabel(p.r.month) + ' profit: ' + inr(p.r.profit)) + '</title></circle>'; }).join('');
+    var labels = rows.map(function(r, i){ return '<text x="' + (i*slot + slot/2).toFixed(1) + '" y="' + (H-4) + '" font-size="11" fill="var(--muted)" text-anchor="middle">' + esc(monthLabel(r.month).split(' ')[0]) + '</text>'; }).join('');
+    return '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Monthly revenue, expenses and profit for the last ' + rows.length + ' months">' +
+      bars + '<path d="' + line + '" fill="none" stroke="var(--purple)" stroke-width="2"/>' + dots +
+      '<line x1="0" y1="' + base + '" x2="' + W + '" y2="' + base + '" stroke="var(--border)" stroke-width="1"/>' + labels + '</svg>';
+  }
+
+  /* ---------- add-record forms ---------- */
+  var formCount = 0;
+  function fieldHtml(f){
+    var name = esc(f.key), req = f.required ? ' required' : '', control;
+    if (f.type === 'select'){
+      control = '<select name="' + name + '"' + req + '><option value="">' + (f.required ? 'Choose…' : 'None') + '</option>' +
+        (f.options||[]).map(function(o){ return '<option value="' + esc(o) + '">' + esc(o) + '</option>'; }).join('') + '</select>';
+    } else if (f.type === 'textarea'){
+      control = '<textarea name="' + name + '" rows="2"' + req + '></textarea>';
+    } else {
+      var t = { number:'number', date:'date', month:'month' }[f.type] || 'text';
+      var extra = f.type === 'number' ? ' step="any"' : '';
+      if (f.min != null) extra += ' min="' + esc(f.min) + '"';
+      if (f.max != null) extra += ' max="' + esc(f.max) + '"';
+      var listId = f.suggest && f.suggest.length ? ('dl' + (++formCount)) : '';
+      control = '<input name="' + name + '" type="' + t + '"' + extra + (listId?' list="'+listId+'"':'') + req + '>' +
+        (listId ? '<datalist id="' + listId + '">' + f.suggest.map(function(v){ return '<option value="' + esc(v) + '">'; }).join('') + '</datalist>' : '');
+    }
+    return '<label>' + esc(f.label) + (f.required ? ' *' : '') + control + '</label>';
+  }
+  function addForm(title, action, fields){
+    return '<details class="add"><summary>' + esc(title) + '</summary>' +
+      '<form class="rd-form" data-rd-action="' + esc(action) + '">' +
+      fields.map(fieldHtml).join('') +
+      '<button class="btn primary" type="submit">Save</button><div class="rd-msg"></div></form></details>';
+  }
+
+  /* ---------- render sections ---------- */
+  function renderOrders(o){
+    var s = o.summary;
+    var last7chg = change(o.last7.revenue, o.prev7.revenue);
+    var tiles = '<div class="kpis">' +
+      kpi('Revenue', inrShort(s.revenue), 'Paid, shipped & delivered orders', 'brand', '₹') +
+      kpi('Paid orders', num(s.paidCount), null, 'purple', '#') +
+      kpi('Avg order value', inrShort(s.avgOrderValue), null, 'green', '~') +
+      kpi('Last 7 days', inrShort(o.last7.revenue), last7chg, 'amber', '7') +
+      kpi('Last 30 days', inrShort(o.last30.revenue), num(o.last30.orders) + ' orders', 'brand', '30') +
+    '</div>';
+    var trendBody = s.paidCount ? '<div class="chart-wrap"><div style="flex:1 1 400px">' + dailyChart(o.trend30) + '</div></div>'
+      : empty('No paid orders yet, so there is no revenue trend to draw.');
+    var money = cols(2, [
+      '<div>' +
+        '<div class="bar-row"><span class="name">Not paid</span><span class="track"><span class="fill warn" style="width:' + (s.unpaidValue?60:2) + '%"></span></span><span class="val">' + esc(inrShort(s.unpaidValue)) + '</span></div>' +
+        '<div class="bar-row"><span class="name">Refunded</span><span class="track"><span class="fill bad" style="width:' + (s.refundedValue?60:2) + '%"></span></span><span class="val">' + esc(inrShort(s.refundedValue)) + '</span></div>' +
+        '<div class="bar-row"><span class="name">Cancelled</span><span class="track"><span class="fill warn" style="width:' + (s.cancelledValue?60:2) + '%"></span></span><span class="val">' + esc(inrShort(s.cancelledValue)) + '</span></div>' +
+      '</div>',
+      statusBars(s.byStatus),
+    ]);
+    var moneySection = '<div class="cols two"><div><h3 style="font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:10px;">Money not collected</h3></div><div><h3 style="font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:10px;">Orders by status</h3></div></div>' + money;
+    var trunc = s.truncated ? note('Showing the most recent 5,000 orders only.') : '';
+    return tiles +
+      section('revenue', 'Revenue, last 30 days', 'Daily', trendBody) +
+      section('order-mix', 'Where the money is', null, moneySection + trunc);
+  }
+
+  function renderLedger(rows){
+    var latest = rows[rows.length-1];
+    var profitTile = kpi('Profit, ' + monthLabel(latest.month), inrShort(latest.profit), latest.profit >= 0 ? { text:'in the black', tone:'up' } : { text:'running behind', tone:'down' }, latest.profit >= 0 ? 'green' : 'red', '₹');
+    var chart = '<div class="chart-wrap"><div style="flex:1 1 400px">' + ledgerChart(rows) +
+      '<div class="legend"><span><i style="background:var(--brand)"></i>Revenue</span><span><i style="background:var(--amber)"></i>Expenses</span><span><i style="background:var(--purple)"></i>Profit</span></div></div></div>';
+    return { profitTile: profitTile, section: section('ledger', 'Revenue vs. expenses, last 6 months', monthLabel(latest.month), chart) };
+  }
+
+  function renderBudgets(b){
+    var lines = b.lines || [];
+    var head = '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;"><span style="font-size:12.5px;color:var(--muted);">' + esc(monthLabel(b.month)) + '</span>' +
+      (b.over ? '<span class="pill warn">' + b.over + ' over budget</span>' : '<span class="pill ok">On track</span>') + '</div>';
+    var rows = !lines.length ? empty('No budget set for this month yet — add one below.') : lines.map(function(l){
+      var pctv = l.planned ? Math.min(100, Math.round(l.actual / l.planned * 100)) : (l.actual ? 100 : 0);
+      return '<div class="budget-row" style="display:block;"><div style="display:flex;justify-content:space-between;"><span class="cat">' + esc(l.category) + '</span>' +
+        '<span class="nums"><b>' + esc(inrShort(l.actual)) + '</b> of ' + esc(inrShort(l.planned)) + (l.over ? ' <span class="pill bad">over</span>' : '') + '</span></div>' +
+        '<div class="budget-track"><div class="budget-fill' + (l.over?' over':'') + '" style="width:' + pctv + '%"></div></div></div>';
+    }).join('');
+    var form = addForm('Add a budget', 'save-budget', [
+      { key:'month', label:'Month', type:'month', required:true },
+      { key:'category', label:'Category', type:'select', required:true, options:EXPENSE_CATEGORIES },
+      { key:'planned', label:'Planned amount (₹)', type:'number', required:true, min:0 },
+    ]);
+    return section('budget', 'Budget vs. actual', null, head + rows + form);
+  }
+
+  function renderExpenses(e){
+    var body = table(
+      ['Date','Category','Description', {label:'Amount',num:true}, 'Paid to'],
+      (e.list||[]).map(function(x){ return [day(x.date), x.category, x.description || '—', inr(x.amount), x.paidTo || '—']; }),
+      'No expenses logged yet.'
+    );
+    var form = addForm('Add an expense', 'save-expense', [
+      { key:'spentOn', label:'Date', type:'date', required:true },
+      { key:'category', label:'Category', type:'select', required:true, options:e.categories || EXPENSE_CATEGORIES },
+      { key:'description', label:'Description', type:'text' },
+      { key:'amount', label:'Amount (₹)', type:'number', required:true, min:0 },
+      { key:'paidTo', label:'Paid to', type:'text' },
+    ]);
+    return section('expenses', 'Recent expenses', e.list ? 'Most recent 20' : null, body + form);
+  }
+
+  function renderInvestments(inv, productNames){
+    var tiles = cols(2, [
+      '<div class="budget-row" style="border:none;padding:0;"><span class="cat" style="font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;">Invested</span><div class="v" style="font-family:Sora;font-size:20px;font-weight:700;margin-top:4px;">' + esc(inrShort(inv.invested)) + '</div></div>',
+      '<div class="budget-row" style="border:none;padding:0;"><span class="cat" style="font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;">Current value</span><div class="v" style="font-family:Sora;font-size:20px;font-weight:700;margin-top:4px;">' + esc(inrShort(inv.currentValue)) + '</div></div>',
+    ]);
+    var body = table(
+      ['Name','Kind', {label:'Put in',num:true}, {label:'Current value',num:true}],
+      (inv.list||[]).map(function(x){ return [x.name, x.kind || '—', inr(x.amount), x.currentValue == null ? '—' : inr(x.currentValue)]; }),
+      'No investments recorded yet.'
+    );
+    var form = addForm('Add an investment', 'save-investment', [
+      { key:'name', label:'Name', type:'text', required:true },
+      { key:'kind', label:'Kind (equipment, stock, deposit…)', type:'text' },
+      { key:'amount', label:'Amount put in (₹)', type:'number', required:true, min:0 },
+      { key:'investedOn', label:'Invested on', type:'date' },
+      { key:'currentValue', label:'Current value (₹)', type:'number', min:0 },
+      { key:'notes', label:'Notes', type:'textarea' },
+    ]);
+    return section('investments', 'Investments', null, tiles + '<div style="margin-top:16px;">' + body + form + '</div>');
+  }
+
+  function renderTax(t){
+    var tiles = cols(3, [
+      '<div><span style="font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;">Collected</span><div style="font-family:Sora;font-size:19px;font-weight:700;margin-top:4px;">' + esc(inrShort(t.collected)) + '</div></div>',
+      '<div><span style="font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;">Paid</span><div style="font-family:Sora;font-size:19px;font-weight:700;margin-top:4px;">' + esc(inrShort(t.paid)) + '</div></div>',
+      '<div><span style="font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;">Unfiled periods</span><div style="font-family:Sora;font-size:19px;font-weight:700;margin-top:4px;color:' + (t.unfiled ? 'var(--red)' : 'var(--ink)') + '">' + esc(num(t.unfiled)) + '</div></div>',
+    ]);
+    var body = table(
+      ['Period','Type', {label:'Collected',num:true}, {label:'Paid',num:true}, 'Filed'],
+      (t.list||[]).map(function(x){ return [x.period, x.type || '—', inr(x.collected), inr(x.paid), x.filedOn ? day(x.filedOn) : html(pill('Not filed','warn'))]; }),
+      'No tax records yet.'
+    );
+    var form = addForm('Add a tax record', 'save-tax-record', [
+      { key:'period', label:'Period (e.g. Aug 2026)', type:'text', required:true },
+      { key:'taxType', label:'Tax type', type:'text' },
+      { key:'collected', label:'Collected from customers (₹)', type:'number', min:0 },
+      { key:'paid', label:'Paid to government (₹)', type:'number', min:0 },
+      { key:'filedOn', label:'Filed on', type:'date' },
+      { key:'notes', label:'Notes', type:'textarea' },
+    ]);
+    return section('tax', 'Tax', null, tiles + '<div style="margin-top:16px;">' + body + form + '</div>');
+  }
+
+  function renderCosts(costs, productNames, margins){
+    var marginBlock = '';
+    if (margins){
+      var avg = margins.averageMarginPct;
+      marginBlock = '<div style="margin-bottom:16px;"><div style="display:flex;gap:18px;flex-wrap:wrap;align-items:baseline;margin-bottom:10px;">' +
+        '<span style="font-family:Sora;font-size:20px;font-weight:700;">' + (avg == null ? '—' : esc(avg) + '%') + '</span>' +
+        '<span style="font-size:12.5px;color:var(--muted);">average gross margin · ' + esc(num(margins.covered)) + ' of ' + esc(margins.totalProducts == null ? '?' : num(margins.totalProducts)) + ' products have a cost entered</span></div>' +
+        (margins.lowest && margins.lowest.length ? '<div style="font-size:12.5px;font-weight:700;color:var(--ink-soft);margin-bottom:6px;">Lowest margins</div>' + table(
+          ['Product', {label:'Price',num:true}, {label:'Cost',num:true}, {label:'Margin',num:true}],
+          margins.lowest.map(function(m){ return [m.name, inr(m.price), inr(m.cost), html(pill(m.marginPct + '%', m.marginPct < 30 ? 'bad' : (m.marginPct < 50 ? 'warn' : 'ok')))]; })
+        ) : '') + '</div>';
+    }
+    var body = table(
+      ['Product', {label:'Cost price',num:true}, 'Fabric', 'Supplier'],
+      (costs||[]).map(function(c){ return [c.name, inr(c.cost), c.fabric || '—', c.supplier || '—']; }),
+      'No product costs entered yet — margins can\'t be worked out until these are filled in.'
+    );
+    var form = addForm('Add / update a product cost', 'save-product-cost', [
+      { key:'productName', label:'Product name', type:'text', required:true, suggest:productNames || [] },
+      { key:'costPrice', label:'Cost price (₹)', type:'number', required:true, min:0 },
+      { key:'fabric', label:'Fabric', type:'text' },
+      { key:'supplier', label:'Supplier', type:'text' },
+    ]);
+    return section('costs', 'Product costs', null, marginBlock + '<div style="font-size:12.5px;font-weight:700;color:var(--ink-soft);margin-bottom:6px;">Entered costs</div>' + body + form);
+  }
+
+  function render(d){
+    var out = '';
+    var kpisExtra = '';
+    var navSections = [];
+
+    out += na(d.orders, function(o){ navSections.push(['#revenue','Revenue'], ['#order-mix','Orders']); return renderOrders(o); }, 'Order data');
+
+    if (d.ledger && d.ledger.length){
+      var L = renderLedger(d.ledger);
+      kpisExtra += L.profitTile;
+      out += L.section;
+      navSections.push(['#ledger','Profit']);
+    }
+
+    out += na(d.budgets, function(b){ navSections.push(['#budget','Budget']); return renderBudgets(b); }, 'Budget data');
+    out += na(d.expenses, function(e){ navSections.push(['#expenses','Expenses']); return renderExpenses(e); }, 'Expense data');
+    out += na(d.investments, function(i){ navSections.push(['#investments','Investments']); return renderInvestments(i, d.productNames); }, 'Investment data');
+    out += na(d.tax, function(t){ navSections.push(['#tax','Tax']); return renderTax(t); }, 'Tax data');
+    out += na(d.costs, function(c){ navSections.push(['#costs','Product costs']); return renderCosts(c, d.productNames, d.margins); }, 'Product cost data');
+
+    if (d.margins){
+      var mg = d.margins;
+      kpisExtra += kpi('Avg gross margin', mg.averageMarginPct == null ? '—' : mg.averageMarginPct + '%',
+        mg.averageMarginPct == null ? 'Add product costs to see margins' : num(mg.covered) + ' of ' + (mg.totalProducts == null ? '?' : num(mg.totalProducts)) + ' products costed',
+        'purple', '%');
+    }
+    if (kpisExtra){
+      // splice the ledger's profit tile into the first kpi row
+      out = out.replace('<div class="kpis">', '<div class="kpis">' + kpisExtra);
+    }
+
+    return { html:out, nav:navSections };
+  }
+
+  /* ---------- action wiring (add-forms, buttons) ---------- */
+  function toast(text, tone){
+    try {
+      var t = document.createElement('div');
+      t.className = 'toast ' + (tone||'');
+      t.textContent = text;
+      document.body.appendChild(t);
+      setTimeout(function(){ if (t.remove) t.remove(); }, 2600);
+    } catch (e) {}
+  }
+  async function call(name, body){
+    var token = null;
+    try { token = localStorage.getItem(TOKEN_KEY); } catch (e) {}
+    var url = '/api/admin?action=role-action&role=' + encodeURIComponent(ROLE) + '&name=' + encodeURIComponent(name);
+    var res = await fetch(url, { method:'POST', headers:{ 'Content-Type':'application/json', Authorization:'Bearer ' + token }, body: JSON.stringify(body||{}) });
+    var json = await res.json().catch(function(){ return {}; });
+    if (!res.ok) throw new Error(json.error || 'Could not save (' + res.status + ').');
+    return json.result;
+  }
+  function wireActions(){
+    var body = document.getElementById('body');
+    body.addEventListener('submit', async function(e){
+      var form = e.target && e.target.closest ? e.target.closest('form[data-rd-action]') : null;
+      if (!form) return;
+      e.preventDefault();
+      var msg = form.querySelector('.rd-msg'), btn = form.querySelector('button[type="submit"]');
+      if (msg) msg.textContent = 'Saving…';
+      if (btn) btn.disabled = true;
+      try {
+        await call(form.getAttribute('data-rd-action'), Object.fromEntries(new FormData(form)));
+        toast('Saved', 'ok');
+        await load();
+      } catch (err) {
+        if (msg) msg.textContent = err.message;
+        if (btn) btn.disabled = false;
+      }
+    });
+  }
+
+  /* ---------- page shell / fetch ---------- */
+  function signOut(){
+    try { localStorage.removeItem(TOKEN_KEY); } catch (e) {}
+    location.href = ADMIN_PANEL_URL;
+  }
+  function tools(payload){
+    var el = document.getElementById('tools'), h = '';
+    if (payload && payload.viewer && payload.viewer.isSuperAdmin && payload.roles){
+      h += '<select class="select" id="switch" aria-label="Switch role dashboard">' +
+        payload.roles.map(function(r){ return '<option value="' + esc(r.path) + '"' + (r.title === ROLE ? ' selected' : '') + '>' + esc(r.title) + '</option>'; }).join('') + '</select>';
+    }
+    h += '<button class="btn" id="refresh" type="button">Refresh</button>' +
+      '<a class="btn" href="' + ADMIN_PANEL_URL + '">Admin panel</a>' +
+      '<button class="btn" id="signout" type="button">Sign out</button>';
+    el.innerHTML = h;
+    var sw = document.getElementById('switch');
+    if (sw) sw.addEventListener('change', function(){ location.href = sw.value; });
+    document.getElementById('refresh').addEventListener('click', function(){ load(); });
+    document.getElementById('signout').addEventListener('click', signOut);
+  }
+  function showProblem(title, message, extraHtml){
+    document.getElementById('body').innerHTML = '<div class="center"><h2>' + esc(title) + '</h2><p>' + esc(message) + '</p>' + (extraHtml||'') + '</div>';
+  }
+
+  async function load(){
+    var token = null;
+    try { token = localStorage.getItem(TOKEN_KEY); } catch (e) {}
+    if (!token) { location.href = ADMIN_PANEL_URL; return; }
+
+    var btn = document.getElementById('refresh');
+    if (btn) btn.disabled = true;
+
+    try {
+      var res = await fetch('/api/admin?action=role-dashboard&role=' + encodeURIComponent(ROLE), { headers:{ Authorization:'Bearer ' + token } });
+      var payload = await res.json().catch(function(){ return {}; });
+
+      if (res.status === 401) { signOut(); return; }
+      if (res.status === 403){
+        tools(null);
+        var link = payload.dashboardPath ? '<a class="btn" href="' + esc(payload.dashboardPath) + '">Go to my dashboard</a> ' : '';
+        showProblem('This dashboard isn’t yours', payload.error || 'You don’t have access to this role’s dashboard.', link + '<a class="btn" href="' + ADMIN_PANEL_URL + '">Admin panel</a>');
+        return;
+      }
+      if (!res.ok){
+        showProblem('Couldn’t load the dashboard', payload.error || 'Request failed (' + res.status + ').', '<button class="btn" id="retry" type="button">Try again</button>');
+        tools(null);
+        var r = document.getElementById('retry'); if (r) r.addEventListener('click', load);
+        return;
+      }
+
+      document.title = payload.title + ' — Razariser';
+      tools(payload);
+
+      var who = payload.viewer.isSuperAdmin ? 'Board of Directors preview' : 'Signed in as ' + payload.viewer.username;
+      var result = render(payload.data);
+      document.getElementById('hero').innerHTML =
+        '<h1>' + esc(payload.title) + '</h1>' +
+        '<div class="who">' + esc(who) + ' · updated ' + esc(new Date(payload.generatedAt).toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' })) + '</div>' +
+        '<div class="chips">' + (payload.departments||[]).map(function(dep){ return '<span class="chip">' + esc(dep) + '</span>'; }).join('') + '</div>' +
+        (result.nav.length ? '<div class="navrow">' + result.nav.map(function(n){ return '<a href="' + n[0] + '">' + esc(n[1]) + '</a>'; }).join('') + '</div>' : '');
+
+      var missing = (payload.notBuilt||[]).length
+        ? section('not-built', 'Not built in Razariser yet', null, note('These parts of the ' + esc(ROLE) + ' seat don’t exist as modules yet, so there is nothing real to show for them: <strong>' + payload.notBuilt.map(esc).join(', ') + '</strong>.'))
+        : '';
+      document.getElementById('body').innerHTML = result.html + missing;
+    } catch (err) {
+      tools(null);
+      showProblem('Couldn’t reach the server', 'Check your connection and try again.', '<button class="btn" id="retry" type="button">Try again</button>');
+      var rb = document.getElementById('retry'); if (rb) rb.addEventListener('click', load);
+    } finally {
+      var b = document.getElementById('refresh'); if (b) b.disabled = false;
+    }
+  }
+
+  tools(null);
+  wireActions();
+  load();
+})();
 </script>
 </body>
 </html>
