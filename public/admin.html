@@ -338,6 +338,27 @@ tbody tr:hover{background:rgba(255,255,255,.02)}
 .btn:hover::before{left:130%}
 .btn-gold:hover{box-shadow:0 8px 24px rgba(201,168,76,.35);transform:translateY(-2px)}
 .btn:active{transform:translateY(0) scale(.98)}
+/* ── theme palette ── */
+.swatch-row{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:var(--radius-sm);padding:8px 10px}
+.swatch-row input[type="color"]{width:32px;height:32px;padding:0;border:1px solid rgba(255,255,255,.15);border-radius:8px;background:none;flex-shrink:0;cursor:pointer}
+.swatch-row .swatch-label{font-size:10.5px;color:var(--gray);text-transform:uppercase;letter-spacing:.05em;flex:1}
+.swatch-row input[type="text"]{width:78px;flex-shrink:0;font-size:11px;padding:6px 8px}
+.palette-card-wrap{border-radius:var(--radius-sm);background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.08);margin-bottom:10px;overflow:hidden;transition:border-color var(--t)}
+.palette-card-wrap.is-active{border-color:var(--gold-d);background:rgba(201,168,76,.06)}
+.palette-card{display:flex;align-items:center;gap:14px;padding:12px 14px}
+.palette-strip{display:flex;flex-shrink:0;border-radius:8px;overflow:hidden;box-shadow:0 0 0 1px rgba(255,255,255,.08)}
+.palette-strip span{width:14px;height:28px;display:block}
+.palette-card .pc-name{flex:1;min-width:0;font-size:13px}
+.palette-card .pc-roles-tag{font-size:9px;font-family:'Montserrat',sans-serif;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--gold);border:1px solid var(--gold-d);padding:3px 8px;border-radius:20px;flex-shrink:0;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.palette-card .pc-actions{display:flex;gap:8px;flex-shrink:0}
+.palette-assign{border-top:1px solid rgba(255,255,255,.06);padding:12px 14px}
+.palette-assign summary{cursor:pointer;font-size:11px;color:var(--gray);text-transform:uppercase;letter-spacing:.05em;list-style:none}
+.palette-assign summary::-webkit-details-marker{display:none}
+.palette-assign summary::before{content:'▸ ';color:var(--gold-d)}
+.palette-assign[open] summary::before{content:'▾ '}
+.role-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin:12px 0}
+.role-chk{display:flex;align-items:center;gap:6px;font-size:11.5px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:6px;padding:6px 8px;cursor:pointer}
+.role-chk input{width:auto !important;accent-color:var(--gold)}
 </style>
 </head>
 <body>
@@ -401,6 +422,56 @@ tbody tr:hover{background:rgba(255,255,255,.02)}
   </div>
 </div>
 
+<!-- ===== TERMS & POLICY (shown after sign-in, before any permission is requested) ===== -->
+<div class="modal-overlay" id="terms-modal" style="z-index:1200">
+  <div class="modal glass" style="max-width:560px">
+    <h2 style="margin-bottom:4px">Terms &amp; Privacy Policy</h2>
+    <div style="font-size:11px;color:var(--gray);margin-bottom:14px">Admin access · Version 1.0</div>
+    <div id="terms-body" style="max-height:52vh;overflow-y:auto;padding-right:8px;font-size:12.5px;line-height:1.7">
+      <p style="margin-bottom:12px">The Razariser admin panel protects customer orders, payments and business data. To keep it secure, every sign-in is verified using the permissions listed below. Please read this before continuing.</p>
+
+      <h3 style="font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--gold);margin:14px 0 6px">1. What is collected at every sign-in</h3>
+      <ul style="padding-left:18px;margin-bottom:10px">
+        <li><strong>Device &amp; network information</strong> — your IP address, browser/device details and the time of sign-in.</li>
+        <li><strong>Precise location</strong> — your GPS coordinates (with accuracy) from your device.</li>
+        <li><strong>Camera photo</strong> — a photo taken from your device camera.</li>
+      </ul>
+
+      <h3 style="font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--gold);margin:14px 0 6px">2. Face recognition</h3>
+      <ul style="padding-left:18px;margin-bottom:10px">
+        <li>A reference photo of your face is stored so your identity can be verified after repeated wrong passwords.</li>
+        <li>Photos captured during a verification are compared by an AI service (Google Gemini) and sent to the Razariser owner.</li>
+      </ul>
+
+      <h3 style="font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--gold);margin:14px 0 6px">3. How it is used and who can see it</h3>
+      <ul style="padding-left:18px;margin-bottom:10px">
+        <li>Sign-in alerts, including your IP and location, are sent to the Razariser owner on Telegram and kept in the sign-in history visible to the Super Admin.</li>
+        <li>This data is used to secure the panel and investigate suspicious access.</li>
+        <li>Your actions in the panel are recorded in an audit log under your name.</li>
+      </ul>
+
+      <h3 style="font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--gold);margin:14px 0 6px">4. Conditions of access</h3>
+      <ul style="padding-left:18px;margin-bottom:10px">
+        <li>By choosing <strong>I Agree</strong>, you confirm you have read these terms and <strong>you grant all of the permissions listed above</strong> (location, camera, and device/IP information) on every sign-in.</li>
+        <li>These permissions are <strong>required</strong>. If you decline, you cannot use the admin panel and you will be signed out.</li>
+        <li>Your browser will ask you to confirm location and camera access — choose <strong>Allow</strong> so the sign-in checks can complete.</li>
+        <li>Do not share your account. You are responsible for activity under it.</li>
+        <li>To withdraw your agreement, contact the Board of Directors (Super Admin). Withdrawing means you can no longer sign in.</li>
+      </ul>
+      <p style="font-size:11px;color:var(--gray)">Your agreement is recorded with your account, the date and time, and this version of the terms.</p>
+    </div>
+    <label style="display:flex;align-items:flex-start;gap:10px;margin:16px 0 0;font-size:12.5px;text-transform:none;letter-spacing:0;color:var(--bone);cursor:pointer">
+      <input type="checkbox" id="terms-checkbox" style="width:auto;margin-top:3px;accent-color:var(--gold)" />
+      <span>I have read and agree to these Terms &amp; Privacy Policy, and I grant all the permissions required (location, camera, and device/IP information).</span>
+    </label>
+    <div class="error-msg" id="terms-error" style="margin:10px 0 0"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline btn-sm" id="terms-decline-btn">Decline &amp; Sign Out</button>
+      <button type="button" class="btn btn-gold btn-sm" id="terms-agree-btn" disabled>I Agree &amp; Continue</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== FACE RECOGNITION CHALLENGE ===== -->
 <div class="modal-overlay" id="face-challenge-modal">
   <div class="modal glass" style="max-width:420px;text-align:center">
@@ -456,6 +527,7 @@ tbody tr:hover{background:rgba(255,255,255,.02)}
       <div class="nav-item" data-tab="returns" id="nav-returns" style="display:none"><svg class="icon"><use href="#i-cart"/></svg>Returns</div>
       <div class="nav-item" data-tab="orgchart"><svg class="icon"><use href="#i-users"/></svg>Org Chart</div>
       <div class="nav-item" data-tab="admins" id="nav-admins" style="display:none"><svg class="icon"><use href="#i-users"/></svg>Admins</div>
+      <div class="nav-item" data-tab="settings" id="nav-settings"><svg class="icon"><use href="#i-settings"/></svg>Theme Palette</div>
       <div class="nav-item disabled"><svg class="icon"><use href="#i-settings"/></svg>Settings <span class="tag">Soon</span></div>
       <div class="nav-item" data-tab="integrations" id="nav-integrations" style="display:none"><svg class="icon"><use href="#i-plug"/></svg>Integrations</div>
       <div class="nav-item disabled"><svg class="icon"><use href="#i-code"/></svg>Developer <span class="tag">Soon</span></div>
@@ -1033,12 +1105,63 @@ tbody tr:hover{background:rgba(255,255,255,.02)}
             <input id="maint-reason-other" type="text" placeholder="Describe the reason…" />
           </div>
 
+          <div class="field" id="maint-cooldown-field">
+            <label>Auto-off cooldown (optional)</label>
+            <select id="maint-cooldown-select">
+              <option value="">No auto-off — stays down until I turn it off</option>
+              <option value="5">5 minutes</option>
+              <option value="10">10 minutes</option>
+              <option value="30">30 minutes</option>
+            </select>
+          </div>
+
+          <div id="maint-cooldown-timer-wrap" style="display:none;align-items:center;justify-content:space-between;gap:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:var(--radius-sm);padding:12px 16px;margin-bottom:16px">
+            <div>
+              <div style="font-size:9px;color:var(--gray);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Auto-off in</div>
+              <div id="maint-cooldown-digital" style="font-family:'Montserrat',monospace;font-size:26px;font-weight:700;letter-spacing:.04em;color:var(--gold)">--:--</div>
+            </div>
+            <button class="btn btn-outline btn-sm" id="maint-cooldown-extend-btn" type="button">+5 min</button>
+          </div>
+
           <div class="error-msg" id="maint-error"></div>
         </div>
 
         <div class="panel glass" style="margin-top:16px;max-width:420px">
           <div class="panel-hdr"><h2>Recent Activity</h2></div>
           <div class="activity-list" id="maint-history-list"><div class="empty-state">Loading…</div></div>
+        </div>
+      </div>
+
+      <!-- Theme Palette -->
+      <div class="tab-view" id="tab-settings" style="display:none">
+        <div class="topbar"><h1>Theme Palette</h1><button class="link-btn" id="logout-btn-settings">Log out</button></div>
+        <div style="font-size:12px;color:var(--gray);margin-bottom:16px">Upload an image to pull a palette from it, or pick colors by hand, then save it. Each saved palette can be assigned to specific roles — pick Super Admin, one or more Sub Admin roles, or both — and only those dashboards re-theme.</div>
+
+        <div id="palette-editor-wrap" style="display:none">
+          <div class="panel glass" style="margin-bottom:16px;max-width:680px">
+            <div class="panel-hdr"><h2>Create a Palette</h2></div>
+            <div class="field">
+              <label>Upload an image to extract colors from</label>
+              <input type="file" id="palette-image-file" accept="image/*" />
+              <div class="error-msg" id="palette-image-status" style="margin-top:8px"></div>
+            </div>
+            <div id="palette-swatch-editor" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:16px 0"></div>
+            <div class="field">
+              <label>Palette name</label>
+              <input type="text" id="palette-name-input" placeholder="e.g. Midnight Gold" maxlength="60" />
+            </div>
+            <button class="btn btn-gold btn-sm" id="palette-save-btn">Save Palette</button>
+            <span class="error-msg" id="palette-editor-status" style="display:inline-block;margin-left:12px"></span>
+          </div>
+        </div>
+
+        <div class="panel glass" style="max-width:680px">
+          <div class="panel-hdr"><h2>Saved Palettes</h2></div>
+          <div id="palette-list-content"><div class="empty-state">Loading…</div></div>
+        </div>
+
+        <div class="panel glass" style="max-width:680px;margin-top:16px;display:none" id="palette-readonly-note">
+          <div style="font-size:12px;color:var(--gray)">Only the Super Admin can upload, save, apply, or remove palettes. Whatever they apply here is what themes your dashboard too.</div>
         </div>
       </div>
 
@@ -1476,6 +1599,9 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     }
 
     setToken(data.token);
+    // Terms & Policy first — no location/camera request happens until the
+    // admin has agreed to grant them.
+    if (!(await ensureTermsAccepted(data.token))) return;
     const photoDone = data.loginLogId ? captureLoginPhoto(data.loginLogId, data.token) : null; // never blocks login
     if (data.loginLogId) captureLoginLocation(data.loginLogId, data.token); // never blocks login
     // A sub-admin with an assigned role lands on their own role dashboard.
@@ -1584,6 +1710,7 @@ document.getElementById('face-challenge-capture-btn').addEventListener('click', 
     setToken(data.token);
     stopStream(video);
     faceChallengeModal.classList.remove('open');
+    if (!(await ensureTermsAccepted(data.token))) return;
     const photoDone = data.loginLogId ? captureLoginPhoto(data.loginLogId, data.token) : null;
     if (data.loginLogId) captureLoginLocation(data.loginLogId, data.token);
     if (data.dashboardPath) { await goToRoleDashboard(data.dashboardPath, photoDone); return; }
@@ -1671,9 +1798,59 @@ document.getElementById('face-enroll-capture-btn').addEventListener('click', asy
 document.getElementById('setup-faceid-btn').addEventListener('click', () => openFaceEnroll({ skippable: true }));
 document.getElementById('nav-set-faceid').addEventListener('click', () => openFaceEnroll({ skippable: true }));
 
-['logout-btn', 'logout-btn-2', 'logout-btn-3', 'logout-btn-4', 'logout-btn-5', 'logout-btn-orders', 'logout-btn-reports', 'logout-btn-integrations', 'logout-btn-system', 'logout-btn-marketing', 'logout-btn-orgchart', 'logout-btn-mydashboard', 'logout-btn-maintenance', 'logout-btn-finance', 'logout-btn-inventory', 'logout-btn-returns', 'logout-btn-analytics'].forEach((id) => {
+['logout-btn', 'logout-btn-2', 'logout-btn-3', 'logout-btn-4', 'logout-btn-5', 'logout-btn-orders', 'logout-btn-reports', 'logout-btn-integrations', 'logout-btn-system', 'logout-btn-marketing', 'logout-btn-orgchart', 'logout-btn-mydashboard', 'logout-btn-maintenance', 'logout-btn-finance', 'logout-btn-inventory', 'logout-btn-returns', 'logout-btn-analytics', 'logout-btn-settings'].forEach((id) => {
   document.getElementById(id).addEventListener('click', () => { clearToken(); showLogin(); });
 });
+
+/* ---------- Terms & Policy consent ---------- */
+// Must match TERMS_VERSION in api/admin.js. Bump both when the wording changes.
+const TERMS_VERSION = '1.0';
+
+// Resolves true once the admin has agreed to the current terms (already on
+// record, or just now), or false if they declined — in which case they are
+// signed out. Nothing that asks for location/camera runs until this is true.
+function ensureTermsAccepted(token) {
+  return new Promise(async (resolve) => {
+    try {
+      const res = await fetch('/api/admin?action=terms-status', { headers: { Authorization: 'Bearer ' + token } });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d.accepted) { resolve(true); return; }
+    } catch (e) { /* couldn't check — fall through and ask */ }
+
+    const modal = document.getElementById('terms-modal');
+    const box = document.getElementById('terms-checkbox');
+    const agreeBtn = document.getElementById('terms-agree-btn');
+    const declineBtn = document.getElementById('terms-decline-btn');
+    const errEl = document.getElementById('terms-error');
+    box.checked = false; agreeBtn.disabled = true; errEl.textContent = '';
+    document.getElementById('terms-body').scrollTop = 0;
+    modal.classList.add('open');
+
+    box.onchange = () => { agreeBtn.disabled = !box.checked; };
+    agreeBtn.onclick = async () => {
+      agreeBtn.disabled = true; errEl.textContent = '';
+      try {
+        const res = await fetch('/api/admin?action=terms-accept', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+          body: JSON.stringify({ version: TERMS_VERSION }),
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.error || 'Could not record your agreement.');
+        modal.classList.remove('open');
+        resolve(true);
+      } catch (err) {
+        errEl.textContent = err.message + ' Please try again.';
+        agreeBtn.disabled = !box.checked;
+      }
+    };
+    declineBtn.onclick = () => {
+      modal.classList.remove('open');
+      clearToken(); showLogin();
+      resolve(false);
+    };
+  });
+}
 
 async function captureLoginLocation(loginLogId, token) {
   if (!navigator.geolocation) return;
@@ -1740,10 +1917,14 @@ async function captureLoginPhoto(loginLogId, token) {
 /* ---------- Tabs ---------- */
 document.querySelectorAll('.nav-item[data-tab]').forEach((item) => {
   item.addEventListener('click', () => {
+    // Leaving the Theme Palette tab without saving drops any unsaved live
+    // preview and restores whatever palette is actually assigned to this role.
+    const leavingUnsavedPalettePreview = document.getElementById('tab-settings').style.display === 'block' && item.dataset.tab !== 'settings';
     document.querySelectorAll('.nav-item[data-tab]').forEach((i) => i.classList.remove('active'));
     item.classList.add('active');
     document.querySelectorAll('.tab-view').forEach((v) => v.style.display = 'none');
     document.getElementById('tab-' + item.dataset.tab).style.display = 'block';
+    if (leavingUnsavedPalettePreview) applyActivePalette();
     if (item.dataset.tab === 'products') loadProducts();
     if (item.dataset.tab === 'pages') { loadPages(); renderHomepageRow(); }
     if (item.dataset.tab === 'admins') { loadAdmins(); loadLoginLogs(); }
@@ -1760,6 +1941,7 @@ document.querySelectorAll('.nav-item[data-tab]').forEach((item) => {
     if (item.dataset.tab === 'finance') loadFinanceOverview();
     if (item.dataset.tab === 'inventory') loadInventoryOverview();
     if (item.dataset.tab === 'returns') loadReturnsList();
+    if (item.dataset.tab === 'settings') initPaletteTab();
   });
 });
 
@@ -2147,8 +2329,10 @@ async function loadSystemStatus() {
 }
 
 /* ---------- Maintenance Mode (real, via /api/admin) ---------- */
-let maintenanceState = { on: false, reason: null };
+let maintenanceState = { on: false, reason: null, cooldownSeconds: null, cooldownEndsAt: null };
 let maintenanceSubmitting = false;
+let maintCountdownInterval = null;
+let maintenanceCooldownWatcherStarted = false;
 
 function renderMaintenanceState() {
   const pill = document.getElementById('maint-status-pill');
@@ -2158,6 +2342,8 @@ function renderMaintenanceState() {
   const labelOn = document.getElementById('maint-switch-label-on');
   const reasonField = document.getElementById('maint-reason-field');
   const reasonOtherField = document.getElementById('maint-reason-other-field');
+  const cooldownField = document.getElementById('maint-cooldown-field');
+  const cooldownTimerWrap = document.getElementById('maint-cooldown-timer-wrap');
 
   if (maintenanceState.on) {
     pill.textContent = 'DOWN';
@@ -2170,6 +2356,8 @@ function renderMaintenanceState() {
     labelOn.style.opacity = '1';
     reasonField.style.display = 'none';
     reasonOtherField.style.display = 'none';
+    cooldownField.style.display = 'none';
+    cooldownTimerWrap.style.display = maintenanceState.cooldownEndsAt ? 'flex' : 'none';
   } else {
     pill.textContent = 'LIVE';
     pill.className = 'int-status ok';
@@ -2181,7 +2369,53 @@ function renderMaintenanceState() {
     labelOn.style.opacity = '0';
     reasonField.style.display = 'block';
     reasonOtherField.style.display = document.getElementById('maint-reason-select').value === 'Other' ? 'block' : 'none';
+    cooldownField.style.display = 'block';
+    cooldownTimerWrap.style.display = 'none';
   }
+  startMaintCountdownIfNeeded();
+}
+
+function stopMaintCountdown() {
+  if (maintCountdownInterval) { clearInterval(maintCountdownInterval); maintCountdownInterval = null; }
+}
+
+// Purely cosmetic, per-second, computed client-side from cooldownEndsAt —
+// the ACTUAL auto-off is decided server-side (see maybeAutoExpireMaintenance
+// in admin.js). When this hits zero it just asks the server for the real
+// status, which is what triggers the actual flip.
+function startMaintCountdownIfNeeded() {
+  stopMaintCountdown();
+  const digital = document.getElementById('maint-cooldown-digital');
+  if (!maintenanceState.on || !maintenanceState.cooldownEndsAt) { digital.textContent = '--:--'; return; }
+
+  const tick = () => {
+    const msLeft = new Date(maintenanceState.cooldownEndsAt).getTime() - Date.now();
+    if (msLeft <= 0) {
+      digital.textContent = '00:00';
+      stopMaintCountdown();
+      loadMaintenanceStatus(); // triggers the real server-side auto-expiry check
+      return;
+    }
+    const totalSec = Math.ceil(msLeft / 1000);
+    const mm = String(Math.floor(totalSec / 60)).padStart(2, '0');
+    const ss = String(totalSec % 60).padStart(2, '0');
+    digital.textContent = `${mm}:${ss}`;
+  };
+  tick();
+  maintCountdownInterval = setInterval(tick, 1000);
+}
+
+// Lightweight background safety net: even if the Super Admin isn't sitting
+// on the Maintenance Mode tab, this catches an expired cooldown as long as
+// ANY tab of the admin panel is open somewhere (started once per login —
+// see loadDashboard). Only polls at all while a cooldown is actually
+// running, and only ever calls an endpoint Super Admin is allowed to call.
+function startMaintenanceCooldownWatcher() {
+  if (maintenanceCooldownWatcherStarted || currentRole !== 'super_admin') return;
+  maintenanceCooldownWatcherStarted = true;
+  setInterval(() => {
+    if (maintenanceState.on && maintenanceState.cooldownEndsAt) loadMaintenanceStatus();
+  }, 15000);
 }
 
 function currentMaintReason() {
@@ -2193,7 +2427,7 @@ function currentMaintReason() {
 async function loadMaintenanceStatus() {
   try {
     const data = await api('/api/admin?action=maintenance-status');
-    maintenanceState = { on: data.on, reason: data.reason };
+    maintenanceState = { on: data.on, reason: data.reason, cooldownSeconds: data.cooldownSeconds, cooldownEndsAt: data.cooldownEndsAt };
     if (data.on && data.reason) {
       const sel = document.getElementById('maint-reason-select');
       const match = Array.from(sel.options).find((o) => o.value === data.reason);
@@ -2202,6 +2436,7 @@ async function loadMaintenanceStatus() {
     }
     renderMaintenanceState();
     loadMaintenanceHistory();
+    startMaintenanceCooldownWatcher();
   } catch (err) {
     document.getElementById('maint-status-pill').textContent = 'Error';
   }
@@ -2231,6 +2466,24 @@ document.getElementById('maint-reason-select').addEventListener('change', () => 
   document.getElementById('maint-reason-other-field').style.display = document.getElementById('maint-reason-select').value === 'Other' ? 'block' : 'none';
 });
 
+document.getElementById('maint-cooldown-extend-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('maint-cooldown-extend-btn');
+  const errEl = document.getElementById('maint-error');
+  errEl.textContent = '';
+  btn.disabled = true;
+  try {
+    const data = await api('/api/admin?action=maintenance-extend', { method: 'POST' });
+    maintenanceState.cooldownSeconds = data.cooldownSeconds;
+    maintenanceState.cooldownEndsAt = data.cooldownEndsAt;
+    renderMaintenanceState();
+    loadMaintenanceHistory();
+  } catch (err) {
+    errEl.textContent = err.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 document.getElementById('maint-switch-track').addEventListener('click', async () => {
   if (maintenanceSubmitting) return;
   const errEl = document.getElementById('maint-error');
@@ -2241,12 +2494,16 @@ document.getElementById('maint-switch-track').addEventListener('click', async ()
     if (!reason) { errEl.textContent = 'Select (or type) a reason before going down.'; return; }
     if (!confirm('This takes the live store down and redirects customers to the backup. Continue?')) return;
 
+    const cooldownRaw = document.getElementById('maint-cooldown-select').value;
+    const cooldownMinutes = cooldownRaw ? Number(cooldownRaw) : null;
+
     maintenanceSubmitting = true;
     try {
-      const data = await api('/api/admin?action=maintenance-toggle', { method: 'POST', body: JSON.stringify({ on: true, reason }) });
-      maintenanceState = { on: data.on, reason: data.reason };
+      const data = await api('/api/admin?action=maintenance-toggle', { method: 'POST', body: JSON.stringify({ on: true, reason, cooldownMinutes }) });
+      maintenanceState = { on: data.on, reason: data.reason, cooldownSeconds: data.cooldownSeconds, cooldownEndsAt: data.cooldownEndsAt };
       renderMaintenanceState();
       loadMaintenanceHistory();
+      startMaintenanceCooldownWatcher();
     } catch (err) {
       errEl.textContent = err.message;
     } finally {
@@ -2256,9 +2513,10 @@ document.getElementById('maint-switch-track').addEventListener('click', async ()
     maintenanceSubmitting = true;
     try {
       const data = await api('/api/admin?action=maintenance-toggle', { method: 'POST', body: JSON.stringify({ on: false }) });
-      maintenanceState = { on: data.on, reason: data.reason };
+      maintenanceState = { on: data.on, reason: data.reason, cooldownSeconds: data.cooldownSeconds, cooldownEndsAt: data.cooldownEndsAt };
       document.getElementById('maint-reason-select').value = '';
       document.getElementById('maint-reason-other').value = '';
+      document.getElementById('maint-cooldown-select').value = '';
       renderMaintenanceState();
       loadMaintenanceHistory();
     } catch (err) {
@@ -2879,6 +3137,8 @@ async function loadDashboard() {
     loadDashboardProductWidgets();
     loadOrdersStats();
     loadDashboardVisitors();
+    applyActivePalette();
+    if (currentRole === 'super_admin') loadMaintenanceStatus();
   } catch (err) {
     if (err.message.includes('Session')) { clearToken(); showLogin(); }
   }
@@ -4689,6 +4949,318 @@ document.getElementById('mkt-research-ask').addEventListener('click', async () =
     btn.disabled = false;
   }
 });
+
+/* ---------- Theme Palette (upload / pick / save / apply) ---------- */
+const PALETTE_TOKENS = [
+  { key: 'gold',      cssVar: '--gold',   label: 'Accent' },
+  { key: 'goldLight', cssVar: '--gold-l', label: 'Accent Light' },
+  { key: 'goldDark',  cssVar: '--gold-d', label: 'Accent Dark' },
+  { key: 'black',     cssVar: '--black',  label: 'Background' },
+  { key: 'dark',      cssVar: '--dark',   label: 'Panel' },
+  { key: 'dark2',     cssVar: '--dark2',  label: 'Panel Alt' },
+  { key: 'bone',      cssVar: '--bone',   label: 'Text' },
+  { key: 'gray',      cssVar: '--gray',   label: 'Muted Text' },
+];
+const DEFAULT_PALETTE_COLORS = { gold: '#c9a84c', goldLight: '#e2c27d', goldDark: '#9e7c2e', black: '#0a0a0b', dark: '#111111', dark2: '#161616', bone: '#f5f3ee', gray: '#9a958c' };
+let paletteAssignments = {}; // role_title -> active palette id (or null for "default"), Super Admin view only
+let paletteEditorColors = { ...DEFAULT_PALETTE_COLORS };
+
+/* -- hex/RGB/HSL helpers (used to build gold-l/gold-d off one extracted accent, and to sort/rank image colors) -- */
+function hexToRgb(hex) {
+  const h = hex.replace('#', '');
+  return { r: parseInt(h.substring(0, 2), 16), g: parseInt(h.substring(2, 4), 16), b: parseInt(h.substring(4, 6), 16) };
+}
+function rgbToHex(r, g, b) {
+  const c = (n) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0');
+  return '#' + c(r) + c(g) + c(b);
+}
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h, s; const l = (max + min) / 2;
+  if (max === min) { h = 0; s = 0; } else {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h /= 6;
+  }
+  return { h, s, l };
+}
+function hslToRgb(h, s, l) {
+  if (s === 0) { const v = l * 255; return { r: v, g: v, b: v }; }
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const hue2rgb = (t) => { if (t < 0) t += 1; if (t > 1) t -= 1; if (t < 1 / 6) return p + (q - p) * 6 * t; if (t < 1 / 2) return q; if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6; return p; };
+  return { r: hue2rgb(h + 1 / 3) * 255, g: hue2rgb(h) * 255, b: hue2rgb(h - 1 / 3) * 255 };
+}
+function adjustLightness(hex, delta) {
+  const { r, g, b } = hexToRgb(hex);
+  const hsl = rgbToHsl(r, g, b);
+  hsl.l = Math.max(0, Math.min(1, hsl.l + delta));
+  const out = hslToRgb(hsl.h, hsl.s, hsl.l);
+  return rgbToHex(out.r, out.g, out.b);
+}
+
+/* -- pull a small set of dominant colors out of an uploaded image via canvas, then
+      map the darkest/lightest/most-saturated clusters onto our 8 theme tokens -- */
+function extractPaletteFromImageFile(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        const size = 80; // downscale — we only need a color histogram, not detail
+        canvas.width = size; canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, size, size);
+        const { data } = ctx.getImageData(0, 0, size, size);
+
+        const buckets = new Map(); // quantized rgb -> {r,g,b,count}
+        for (let i = 0; i < data.length; i += 4) {
+          const a = data[i + 3];
+          if (a < 128) continue;
+          const r = Math.round(data[i] / 32) * 32;
+          const g = Math.round(data[i + 1] / 32) * 32;
+          const b = Math.round(data[i + 2] / 32) * 32;
+          const key = r + ',' + g + ',' + b;
+          const cur = buckets.get(key);
+          if (cur) cur.count++; else buckets.set(key, { r, g, b, count: 1 });
+        }
+        URL.revokeObjectURL(url);
+
+        let clusters = Array.from(buckets.values()).sort((a, b) => b.count - a.count).slice(0, 14);
+        if (!clusters.length) return reject(new Error('Could not read any color data from that image.'));
+        clusters = clusters.map((c) => ({ ...c, hsl: rgbToHsl(c.r, c.g, c.b) }));
+
+        const byLight = [...clusters].sort((a, b) => a.hsl.l - b.hsl.l);
+        const toHex = (c) => rgbToHex(c.r, c.g, c.b);
+
+        const black = toHex(byLight[0]);
+        const dark = byLight[1] ? toHex(byLight[1]) : adjustLightness(black, 0.04);
+        const dark2 = byLight[2] ? toHex(byLight[2]) : adjustLightness(dark, 0.04);
+        const bone = toHex(byLight[byLight.length - 1]);
+
+        const midTone = [...clusters].filter((c) => c.hsl.l > 0.35 && c.hsl.l < 0.75).sort((a, b) => a.hsl.s - b.hsl.s)[0];
+        const gray = midTone ? toHex(midTone) : adjustLightness(bone, -0.3);
+
+        const accentCandidates = [...clusters].filter((c) => c.hsl.l > 0.2 && c.hsl.l < 0.8).sort((a, b) => b.hsl.s - a.hsl.s);
+        const accent = accentCandidates[0] || byLight[Math.floor(byLight.length / 2)];
+        const gold = toHex(accent);
+        const goldLight = adjustLightness(gold, 0.18);
+        const goldDark = adjustLightness(gold, -0.18);
+
+        resolve({ gold, goldLight, goldDark, black, dark, dark2, bone, gray });
+      } catch (err) { reject(err); }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not load that image.')); };
+    img.src = url;
+  });
+}
+
+function renderPaletteSwatchEditor() {
+  const wrap = document.getElementById('palette-swatch-editor');
+  wrap.innerHTML = PALETTE_TOKENS.map((t) => `
+    <div class="swatch-row">
+      <input type="color" data-key="${t.key}" value="${paletteEditorColors[t.key]}" />
+      <span class="swatch-label">${t.label}</span>
+      <input type="text" data-key-text="${t.key}" value="${paletteEditorColors[t.key]}" />
+    </div>
+  `).join('');
+  wrap.querySelectorAll('input[type="color"]').forEach((el) => {
+    el.addEventListener('input', () => {
+      paletteEditorColors[el.dataset.key] = el.value;
+      wrap.querySelector(`input[data-key-text="${el.dataset.key}"]`).value = el.value;
+      applyPaletteToRoot(paletteEditorColors);
+    });
+  });
+  wrap.querySelectorAll('input[data-key-text]').forEach((el) => {
+    el.addEventListener('change', () => {
+      const key = el.dataset.keyText;
+      if (/^#[0-9a-fA-F]{6}$/.test(el.value)) {
+        paletteEditorColors[key] = el.value.toLowerCase();
+        wrap.querySelector(`input[type="color"][data-key="${key}"]`).value = el.value;
+        applyPaletteToRoot(paletteEditorColors);
+      } else {
+        el.value = paletteEditorColors[key];
+      }
+    });
+  });
+}
+
+document.getElementById('palette-image-file').addEventListener('change', async function (e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const status = document.getElementById('palette-image-status');
+  status.className = 'error-msg'; status.textContent = 'Reading colors from image…';
+  try {
+    paletteEditorColors = await extractPaletteFromImageFile(file);
+    renderPaletteSwatchEditor();
+    applyPaletteToRoot(paletteEditorColors); // recognized → applied instantly as a live preview
+    const nameInput = document.getElementById('palette-name-input');
+    if (!nameInput.value.trim()) {
+      nameInput.value = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]+/g, ' ').trim().slice(0, 60) || 'Untitled palette';
+    }
+    status.textContent = 'Recognized and applied as a live preview on your screen — tweak any swatch if needed, then Save to keep it and pick roles below to make it stick.';
+  } catch (err) {
+    status.textContent = err.message;
+  }
+});
+
+document.getElementById('palette-save-btn').addEventListener('click', async () => {
+  const nameInput = document.getElementById('palette-name-input');
+  const status = document.getElementById('palette-editor-status');
+  const name = nameInput.value.trim();
+  if (!name) { status.textContent = 'Give the palette a name first.'; return; }
+  status.textContent = 'Saving…';
+  try {
+    await api('/api/admin?action=palette-create', { method: 'POST', body: JSON.stringify({ name, colors: paletteEditorColors }) });
+    nameInput.value = '';
+    status.textContent = 'Saved — find it below and assign it to roles.';
+    loadPalettes();
+  } catch (err) {
+    status.textContent = err.message;
+  }
+});
+
+function paletteStripHtml(colors) {
+  return `<div class="palette-strip">${PALETTE_TOKENS.map((t) => `<span style="background:${escapeAttr(colors[t.key] || '#000')}"></span>`).join('')}</div>`;
+}
+
+function paletteRoleLabel(role) { return role === 'super_admin' ? 'Super Admin' : role; }
+
+// Builds the "Assign to roles" section for one palette card: a checkbox
+// per role (Super Admin + every Sub Admin org title) pre-checked wherever
+// that role is currently themed by this palette (paletteId === null means
+// the "Default" pseudo-palette), plus an Apply button scoped to this card.
+function paletteAssignHtml(paletteId, roleOptions, assignments) {
+  const checks = roleOptions.map((role) => {
+    const current = Object.prototype.hasOwnProperty.call(assignments, role) ? assignments[role] : null;
+    const checked = current === paletteId ? 'checked' : '';
+    return `<label class="role-chk"><input type="checkbox" value="${escapeAttr(role)}" ${checked} /> ${escapeHtml(paletteRoleLabel(role))}</label>`;
+  }).join('');
+  return `
+    <details class="palette-assign" data-palette-id="${paletteId === null ? '' : escapeAttr(paletteId)}">
+      <summary>Assign to roles</summary>
+      <div class="role-grid">${checks}</div>
+      <button class="btn btn-outline btn-sm palette-apply-btn" type="button">Apply to Selected Roles</button>
+      <span class="error-msg palette-apply-status" style="margin-left:10px"></span>
+    </details>`;
+}
+
+function rolesThemedBy(paletteId, roleOptions, assignments) {
+  return roleOptions.filter((role) => {
+    const current = Object.prototype.hasOwnProperty.call(assignments, role) ? assignments[role] : null;
+    return current === paletteId;
+  });
+}
+
+async function loadPalettes() {
+  const list = document.getElementById('palette-list-content');
+  const isSuper = currentRole === 'super_admin';
+  try {
+    if (!isSuper) {
+      // Sub admins can't manage the catalog — just show what's currently applied to their own seat.
+      const { palette } = await api('/api/admin?action=palette-active');
+      list.innerHTML = palette
+        ? `<div class="palette-card-wrap is-active"><div class="palette-card">${paletteStripHtml(palette.colors)}<div class="pc-name">${escapeHtml(palette.name)}</div><span class="pc-roles-tag">Active</span></div></div>`
+        : '<div class="empty-state">Using the original default theme — your Super Admin hasn\'t assigned a custom palette to your role yet.</div>';
+      return;
+    }
+
+    const { palettes, roles, assignments } = await api('/api/admin?action=palette-list');
+    const roleOptions = roles && roles.length ? roles : ['super_admin', ...ADM_ORG_TITLES];
+    paletteAssignments = assignments || {};
+
+    const defaultRoles = rolesThemedBy(null, roleOptions, paletteAssignments);
+    const defaultCard = `<div class="palette-card-wrap${defaultRoles.length ? ' is-active' : ''}">
+      <div class="palette-card">
+        ${paletteStripHtml(DEFAULT_PALETTE_COLORS)}
+        <div class="pc-name">Default (original theme)</div>
+        ${defaultRoles.length ? `<span class="pc-roles-tag" title="${escapeAttr(defaultRoles.map(paletteRoleLabel).join(', '))}">${escapeHtml(defaultRoles.map(paletteRoleLabel).join(', '))}</span>` : ''}
+      </div>
+      ${paletteAssignHtml(null, roleOptions, paletteAssignments)}
+    </div>`;
+
+    const rows = (palettes || []).map((p) => {
+      const themedRoles = rolesThemedBy(p.id, roleOptions, paletteAssignments);
+      return `<div class="palette-card-wrap${themedRoles.length ? ' is-active' : ''}">
+        <div class="palette-card">
+          ${paletteStripHtml(p.colors)}
+          <div class="pc-name">${escapeHtml(p.name)}</div>
+          ${themedRoles.length ? `<span class="pc-roles-tag" title="${escapeAttr(themedRoles.map(paletteRoleLabel).join(', '))}">${escapeHtml(themedRoles.map(paletteRoleLabel).join(', '))}</span>` : ''}
+          <div class="pc-actions"><button class="btn btn-danger btn-sm" onclick="deletePalette('${escapeAttr(p.id)}')">Delete</button></div>
+        </div>
+        ${paletteAssignHtml(p.id, roleOptions, paletteAssignments)}
+      </div>`;
+    }).join('');
+
+    list.innerHTML = defaultCard + rows;
+
+    list.querySelectorAll('.palette-apply-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const details = btn.closest('.palette-assign');
+        const paletteId = details.dataset.paletteId || null;
+        const selectedRoles = Array.from(details.querySelectorAll('input[type="checkbox"]:checked')).map((cb) => cb.value);
+        const status = details.querySelector('.palette-apply-status');
+        if (!selectedRoles.length) { status.textContent = 'Pick at least one role first.'; return; }
+        status.textContent = 'Applying…';
+        btn.disabled = true;
+        try {
+          await applyPalette(paletteId, selectedRoles);
+          status.textContent = 'Applied ✓';
+        } catch (err) {
+          status.textContent = err.message;
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
+  } catch (err) {
+    list.innerHTML = `<div style="color:var(--gray)">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function applyPalette(id, roles) {
+  await api('/api/admin?action=palette-activate', { method: 'POST', body: JSON.stringify({ id: id || null, roles }) });
+  await loadPalettes();
+  await applyActivePalette();
+}
+
+async function deletePalette(id) {
+  if (!confirm('Delete this saved palette? Any roles currently themed by it will fall back to the default theme.')) return;
+  try {
+    await api('/api/admin?action=palette-delete', { method: 'POST', body: JSON.stringify({ id }) });
+    await loadPalettes();
+    await applyActivePalette();
+  } catch (err) { alert(err.message); }
+}
+
+function applyPaletteToRoot(colors) {
+  const root = document.documentElement.style;
+  PALETTE_TOKENS.forEach((t) => { if (colors && colors[t.key]) root.setProperty(t.cssVar, colors[t.key]); });
+}
+
+// Called on every dashboard load (both Super Admin and Sub Admin) so whatever
+// the Super Admin last applied is what everyone actually sees.
+async function applyActivePalette() {
+  try {
+    const { palette } = await api('/api/admin?action=palette-active');
+    applyPaletteToRoot(palette ? palette.colors : DEFAULT_PALETTE_COLORS);
+  } catch (err) {
+    // theming is non-critical — fail silently and keep the built-in defaults
+  }
+}
+
+function initPaletteTab() {
+  const isSuper = currentRole === 'super_admin';
+  document.getElementById('palette-editor-wrap').style.display = isSuper ? 'block' : 'none';
+  document.getElementById('palette-readonly-note').style.display = isSuper ? 'none' : 'block';
+  if (isSuper) renderPaletteSwatchEditor();
+  loadPalettes();
+}
 
 /* ---------- Init ---------- */
 if (getToken()) showApp(); else showLogin();
