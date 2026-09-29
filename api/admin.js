@@ -3571,6 +3571,87 @@ async function handleAiControlHealth(req, res) {
   return res.status(200).json({ checks });
 }
 
+// ── Project Tree ───────────────────────────────────────────────────────────
+// Returns the full folder/file map of the GitHub repo (the source of truth for
+// this project) as a flat list; the admin panel builds the tree from it.
+// Same access rule as the System tab: Super Admin or the CTO seat. Read-only.
+async function handleProjectTree(req, res) {
+  const session = requireAuth(req, res);
+  if (!session) return;
+  if (!(await hasOrgTitleAccess(session, ['CTO']))) {
+    return res.status(403).json({ error: 'Restricted to Super Admin or the CTO seat.' });
+  }
+
+  const token = process.env.GITHUB_TOKEN;
+  const owner = process.env.GITHUB_OWNER;
+  const repo = process.env.GITHUB_REPO;
+  if (!token || !owner || !repo) {
+    return res.status(200).json({
+      configured: false,
+      message: 'Add GITHUB_TOKEN, GITHUB_OWNER and GITHUB_REPO in Vercel env vars to enable the project tree.',
+    });
+  }
+
+  const ghHeaders = {
+    Authorization: `Bearer ${token}`,
+    Accept: 'application/vnd.github+json',
+    'User-Agent': 'admin-project-tree',
+  };
+
+  const ghError = (what, status) => {
+    const hint =
+      status === 401 ? 'GITHUB_TOKEN is invalid or expired.' :
+      status === 403 ? 'GitHub refused the request (token lacks permission, or the API rate limit was hit).' :
+      status === 404 ? 'not found — check GITHUB_OWNER / GITHUB_REPO, that the token can read this repo, and the branch name.' :
+      status === 409 ? 'the repository is empty.' : 'unexpected GitHub response.';
+    return `${what} failed (${status}): ${hint}`;
+  };
+  const enc = (path) => path.split('/').map(encodeURIComponent).join('/'); // keeps "/" in branch names
+
+  // Branch: ?branch=... > GITHUB_BRANCH env > the repo's default branch.
+  let branch = String(req.query.branch || process.env.GITHUB_BRANCH || '').trim();
+  if (branch && !/^[\w.\-\/]+$/.test(branch)) {
+    return res.status(400).json({ error: 'Invalid branch name.' });
+  }
+  if (!branch) {
+    const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers: ghHeaders });
+    if (!repoRes.ok) return res.status(502).json({ error: ghError('GitHub repo lookup', repoRes.status) });
+    branch = (await repoRes.json()).default_branch || 'main';
+  }
+
+  // Resolve the branch to its tree SHA first. The branches endpoint accepts
+  // names containing "/" (e.g. feature/x), which the trees endpoint does not
+  // reliably accept when given a branch name directly.
+  const branchRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/branches/${enc(branch)}`, { headers: ghHeaders });
+  if (!branchRes.ok) {
+    return res.status(502).json({ error: ghError(`Branch "${branch}" lookup`, branchRes.status) });
+  }
+  const treeSha = (await branchRes.json())?.commit?.commit?.tree?.sha;
+  if (!treeSha) return res.status(502).json({ error: `Could not read the tree for branch "${branch}".` });
+
+  const treeRes = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/git/trees/${treeSha}?recursive=1`,
+    { headers: ghHeaders }
+  );
+  if (!treeRes.ok) {
+    return res.status(502).json({ error: ghError('GitHub tree fetch', treeRes.status) });
+  }
+  const tree = await treeRes.json();
+
+  const items = (tree.tree || [])
+    .filter((n) => n.type === 'blob' || n.type === 'tree')
+    .map((n) => ({ path: n.path, type: n.type === 'tree' ? 'dir' : 'file', size: n.size || 0 }));
+
+  res.setHeader('Cache-Control', 'no-store');
+  return res.status(200).json({
+    configured: true,
+    repo: `${owner}/${repo}`,
+    branch,
+    truncated: !!tree.truncated,
+    items,
+  });
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -3589,6 +3670,7 @@ module.exports = async function handler(req, res) {
     if (req.method === 'GET' && action === 'login-logs') return await handleLoginLogs(req, res);
     if (req.method === 'POST' && action === 'assistant') return await handleAssistant(req, res);
     if (req.method === 'GET' && action === 'system-status') return await handleSystemStatus(req, res);
+    if (req.method === 'GET' && action === 'project-tree') return await handleProjectTree(req, res);
     if (req.method === 'GET' && action === 'integrations-status') return await handleIntegrationsStatus(req, res);
     if (req.method === 'GET' && action === 'maintenance-status') return await handleMaintenanceStatus(req, res);
     if (req.method === 'GET' && action === 'maintenance-public-status') return await handleMaintenancePublicStatus(req, res);
