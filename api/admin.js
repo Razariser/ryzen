@@ -14,6 +14,9 @@ const { getJSON } = require('./_lib/github');
 // Per-role dashboards: one backend module per seat, kept outside api/ so they
 // don't count as extra Vercel functions. See Roles-dashboard.js/index.js.
 const RoleDashboards = require('../Roles-dashboard.js/index.js');
+// CFO's real financial data, reused as-is by the AI assistant below — the
+// assistant is never shown a number the CFO dashboard itself doesn't show.
+const CFOModule = require('../Roles-dashboard.js/CFO.js');
 
 const FULL_PERMISSIONS = {
   products: { view: true, edit: true, delete: true },
@@ -493,6 +496,15 @@ const TOOL_HANDLERS = {
     const ctx = await buildMarketingContext();
     return ctx;
   },
+  async getCfoFinancials() {
+    try {
+      const { snapshot } = await CFOModule.assistantBrief({ supabase, getJSON });
+      return snapshot;
+    } catch (err) {
+      console.error('getCfoFinancials tool failed:', err.message);
+      return { error: 'Could not load financial data right now.' };
+    }
+  },
   async checkPricingConsistency() {
     const { data: products } = await getJSON('public/products.json');
     if (!Array.isArray(products) || !products.length) return { outliers: [], note: 'No product data available.' };
@@ -549,6 +561,7 @@ const TOOL_DECLARATIONS = {
   getPageList: { name: 'getPageList', description: 'Get the real current list of website pages.', parameters: { type: 'OBJECT', properties: {} } },
   getSystemStatus: { name: 'getSystemStatus', description: 'Get real recent Vercel deployment status.', parameters: { type: 'OBJECT', properties: {} } },
   getMarketingOverviewTool: { name: 'getMarketingOverviewTool', description: 'Get real marketing overview data: products, customers, page views, cart/wishlist activity.', parameters: { type: 'OBJECT', properties: {} } },
+  getCfoFinancials: { name: 'getCfoFinancials', description: 'Get real CFO financial data: the last 6 months of P&L (revenue, COGS, opex, gross profit, EBITDA, net profit), current budget vs actual, cash balances, receivables and payables aging with the oldest overdue items by name, revenue/margin targets, investments, tax records, open management actions, and recent expenses. Use this for anything beyond the current-month summary already given — trends, comparisons across months, or naming specific overdue customers/vendors.', parameters: { type: 'OBJECT', properties: {} } },
   checkPricingConsistency: { name: 'checkPricingConsistency', description: 'Real statistical check for products priced as outliers within their own category.', parameters: { type: 'OBJECT', properties: {} } },
   listNotes: { name: 'listNotes', description: "List the admin's own saved notes/reminders.", parameters: { type: 'OBJECT', properties: {} } },
   createNote: { name: 'createNote', description: 'Save a new note/reminder for the admin.', parameters: { type: 'OBJECT', properties: { content: { type: 'STRING' } }, required: ['content'] } },
@@ -561,7 +574,7 @@ const TOOL_DECLARATIONS = {
 const ROLE_TOOL_NAMES = {
   personal: ['listNotes', 'createNote', 'toggleNoteDone', 'deleteNote'],
   CMO: ['getMarketingOverviewTool', 'checkPricingConsistency'],
-  CFO: ['getOrderStats'],
+  CFO: ['getCfoFinancials'],
   COO: ['getOrderStats'],
   'CDO (Data)': ['getOrderStats'],
   CPO: ['getProductList'],
@@ -687,12 +700,21 @@ async function buildRoleContext(persona, session) {
         : 'No Vercel API token configured yet, so no live deployment data is available. Say so plainly rather than guessing at system health.',
     };
   }
-  if (persona === 'CFO' || persona === 'COO') {
+  if (persona === 'CFO') {
+    try {
+      const { text } = await CFOModule.assistantBrief({ supabase, getJSON });
+      return { promptRole: 'Razariser\'s Chief Financial Officer (CFO)', context: text };
+    } catch (err) {
+      console.error('buildRoleContext CFO: assistantBrief failed:', err.message);
+      return { promptRole: 'Razariser\'s Chief Financial Officer (CFO)', context: 'Financial data could not be loaded just now — do not invent revenue, margin, or cash figures. Say so plainly and suggest checking the CFO dashboard directly or trying again.' };
+    }
+  }
+  if (persona === 'COO') {
     return {
-      promptRole: persona === 'CFO' ? 'Razariser\'s Chief Financial Officer (CFO)' : 'Razariser\'s Chief Operations Officer (COO)',
+      promptRole: 'Razariser\'s Chief Operations Officer (COO)',
       context: orderCount > 0
         ? `Real order count: ${orderCount}. Detailed financials (revenue, margins) are available in the Reports tab.`
-        : `Razariser has 0 orders so far — there is no real financial or operations history yet. Do not invent revenue, margin, or fulfillment figures. Speak in terms of what to set up and watch for once real orders start.`,
+        : `Razariser has 0 orders so far — there is no real operations history yet. Do not invent fulfillment figures. Speak in terms of what to set up and watch for once real orders start.`,
     };
   }
   if (persona === 'CPO' || persona === 'CDO (Design)') {
