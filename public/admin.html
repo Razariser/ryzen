@@ -359,6 +359,29 @@ tbody tr:hover{background:rgba(255,255,255,.02)}
 .role-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin:12px 0}
 .role-chk{display:flex;align-items:center;gap:6px;font-size:11.5px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:6px;padding:6px 8px;cursor:pointer}
 .role-chk input{width:auto !important;accent-color:var(--gold)}
+/* ── Project Tree ── */
+.pt-toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.pt-check{display:flex;align-items:center;gap:6px;margin:0;font-size:11px;color:var(--gray);text-transform:none;letter-spacing:0;cursor:pointer}
+.pt-check input{width:auto;padding:0}
+.pt-meta{font-size:11px;color:var(--gray);margin-top:12px;line-height:1.7}
+.pt-tree{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;line-height:1.75;padding:6px 4px;overflow-x:auto}
+.pt-tree ul{list-style:none;margin:0;padding-left:20px;border-left:1px dashed rgba(201,168,76,.22)}
+.pt-tree > ul{border-left:none;padding-left:4px}
+.pt-row{display:flex;align-items:center;gap:7px;padding:1px 8px;border-radius:6px;white-space:nowrap}
+.pt-row:hover{background:rgba(201,168,76,.07)}
+.pt-dir > .pt-row{cursor:pointer;color:var(--gold-l);font-weight:600}
+.pt-file > .pt-row{color:var(--bone)}
+.pt-caret{width:10px;display:inline-block;color:var(--gold-d);transition:transform .15s}
+.pt-dir.open > .pt-row .pt-caret{transform:rotate(90deg)}
+.pt-dir:not(.open) > ul{display:none}
+.pt-size{margin-left:8px;font-size:10.5px;color:var(--gray)}
+.pt-count{margin-left:6px;font-size:10.5px;color:var(--gray);font-weight:400}
+.pt-hit > .pt-row .pt-name{background:rgba(201,168,76,.28);border-radius:3px}
+.pt-hide{display:none !important}
+.pt-cp{margin-left:auto;padding:0 6px;color:var(--gray);cursor:pointer;opacity:0;font-size:11px;border-radius:4px;transition:opacity .15s}
+.pt-row:hover .pt-cp{opacity:1}
+.pt-cp:hover{color:var(--gold);background:rgba(201,168,76,.12)}
+@media (hover:none){.pt-cp{opacity:.75}}
 </style>
 </head>
 <body>
@@ -532,6 +555,7 @@ tbody tr:hover{background:rgba(255,255,255,.02)}
       <div class="nav-item" data-tab="integrations" id="nav-integrations" style="display:none"><svg class="icon"><use href="#i-plug"/></svg>Integrations</div>
       <div class="nav-item disabled"><svg class="icon"><use href="#i-code"/></svg>Developer <span class="tag">Soon</span></div>
       <div class="nav-item" data-tab="system" id="nav-system" style="display:none"><svg class="icon"><use href="#i-cpu"/></svg>System</div>
+      <div class="nav-item" data-tab="projecttree" id="nav-projecttree" style="display:none"><svg class="icon"><use href="#i-code"/></svg>Project Tree</div>
       <div class="nav-item" data-tab="maintenance" id="nav-maintenance" style="display:none"><svg class="icon"><use href="#i-shield"/></svg>Maintenance Mode</div>
       <div class="nav-item" data-tab="debug" id="nav-debug" style="display:none"><svg class="icon"><use href="#i-bolt"/></svg>Razariser AI Monitor</div>
       <div class="nav-item" id="nav-set-faceid"><svg class="icon"><use href="#i-face"/></svg>Face Recognition</div>
@@ -1070,6 +1094,32 @@ tbody tr:hover{background:rgba(255,255,255,.02)}
         <div class="topbar"><h1>System</h1><button class="link-btn" id="logout-btn-system">Log out</button></div>
         <div style="font-size:12px;color:var(--gray);margin-bottom:16px">Real deployment status from Vercel. No CPU/RAM/storage metrics shown — those don't exist for stateless serverless functions, so we don't fake them.</div>
         <div id="system-status-content"><div class="empty-state">Loading…</div></div>
+      </div>
+
+      <!-- Project Tree -->
+      <div class="tab-view" id="tab-projecttree" style="display:none">
+        <div class="topbar"><h1>Project Tree</h1><button class="link-btn" id="logout-btn-projecttree">Log out</button></div>
+        <div style="font-size:12px;color:var(--gray);margin-bottom:16px">Live map of every folder and file in the project repository, straight from GitHub. Read-only.</div>
+        <div class="panel glass" style="margin-bottom:16px">
+          <div class="pt-toolbar">
+            <input type="text" id="pt-search" placeholder="Search files or folders…" style="flex:1;min-width:180px" />
+            <button class="btn btn-outline btn-sm" id="pt-expand">Expand all</button>
+            <button class="btn btn-outline btn-sm" id="pt-collapse">Collapse all</button>
+            <label class="pt-check"><input type="checkbox" id="pt-sizes" /> Sizes</label>
+            <select id="pt-format" style="width:auto;padding:7px 10px;font-size:12px" title="Format used by Copy and Export">
+              <option value="tree">Tree (.txt)</option>
+              <option value="markdown">Markdown (.md)</option>
+              <option value="json">JSON (.json)</option>
+              <option value="paths">Path list (.txt)</option>
+              <option value="csv">CSV (.csv)</option>
+            </select>
+            <button class="btn btn-outline btn-sm" id="pt-copy">Copy</button>
+            <button class="btn btn-outline btn-sm" id="pt-download">Export</button>
+            <button class="btn btn-gold btn-sm" id="pt-refresh">Refresh</button>
+          </div>
+          <div class="pt-meta" id="pt-meta"></div>
+        </div>
+        <div class="panel glass"><div id="pt-content" class="pt-tree"><div class="empty-state">Loading…</div></div></div>
       </div>
 
       <!-- Maintenance Mode -->
@@ -1798,7 +1848,7 @@ document.getElementById('face-enroll-capture-btn').addEventListener('click', asy
 document.getElementById('setup-faceid-btn').addEventListener('click', () => openFaceEnroll({ skippable: true }));
 document.getElementById('nav-set-faceid').addEventListener('click', () => openFaceEnroll({ skippable: true }));
 
-['logout-btn', 'logout-btn-2', 'logout-btn-3', 'logout-btn-4', 'logout-btn-5', 'logout-btn-orders', 'logout-btn-reports', 'logout-btn-integrations', 'logout-btn-system', 'logout-btn-marketing', 'logout-btn-orgchart', 'logout-btn-mydashboard', 'logout-btn-maintenance', 'logout-btn-finance', 'logout-btn-inventory', 'logout-btn-returns', 'logout-btn-analytics', 'logout-btn-settings'].forEach((id) => {
+['logout-btn', 'logout-btn-2', 'logout-btn-3', 'logout-btn-4', 'logout-btn-5', 'logout-btn-orders', 'logout-btn-reports', 'logout-btn-integrations', 'logout-btn-system', 'logout-btn-projecttree', 'logout-btn-marketing', 'logout-btn-orgchart', 'logout-btn-mydashboard', 'logout-btn-maintenance', 'logout-btn-finance', 'logout-btn-inventory', 'logout-btn-returns', 'logout-btn-analytics', 'logout-btn-settings'].forEach((id) => {
   document.getElementById(id).addEventListener('click', () => { clearToken(); showLogin(); });
 });
 
@@ -1933,6 +1983,7 @@ document.querySelectorAll('.nav-item[data-tab]').forEach((item) => {
     if (item.dataset.tab === 'reports') initReportsTab();
     if (item.dataset.tab === 'integrations') loadIntegrationsStatus();
     if (item.dataset.tab === 'system') loadSystemStatus();
+    if (item.dataset.tab === 'projecttree') loadProjectTree();
     if (item.dataset.tab === 'maintenance') loadMaintenanceStatus();
     if (item.dataset.tab === 'marketing') loadMarketingOverview();
     if (item.dataset.tab === 'orgchart') renderOrgChart();
@@ -2301,6 +2352,232 @@ async function loadIntegrationsStatus() {
 }
 
 /* ---------- System (real Vercel deployment status, no fake CPU/RAM) ---------- */
+/* ---------- Project Tree ---------- */
+let ptData = null; // { repo, branch, truncated, root }
+
+function ptBuild(items) {
+  const root = { name: '', type: 'dir', children: new Map(), size: 0 };
+  for (const it of items) {
+    const parts = it.path.split('/');
+    let node = root;
+    parts.forEach((part, idx) => {
+      const last = idx === parts.length - 1;
+      if (!node.children.has(part)) {
+        node.children.set(part, { name: part, type: last ? it.type : 'dir', children: new Map(), size: 0 });
+      }
+      node = node.children.get(part);
+      if (last) { node.type = it.type; node.size = it.size || 0; }
+    });
+  }
+  const total = (n) => {
+    if (n.type === 'file') return n.size;
+    n.size = 0;
+    n.fileCount = 0; n.dirCount = 0;
+    for (const c of n.children.values()) {
+      n.size += total(c);
+      if (c.type === 'file') n.fileCount++;
+      else { n.dirCount++; n.fileCount += c.fileCount; n.dirCount += c.dirCount; }
+    }
+    return n.size;
+  };
+  total(root);
+  return root;
+}
+
+function ptSorted(node) {
+  return [...node.children.values()].sort((a, b) =>
+    (a.type === b.type ? 0 : a.type === 'dir' ? -1 : 1) || a.name.localeCompare(b.name, undefined, { numeric: true }));
+}
+
+function ptFmtSize(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+  return (b / 1048576).toFixed(2) + ' MB';
+}
+
+function ptRender(node, depth, base = '') {
+  return '<ul>' + ptSorted(node).map((c) => {
+    const nm = escapeHtml(c.name);
+    const full = base + c.name;
+    const cp = `<span class="pt-cp" data-path="${escapeHtml(full)}" title="Copy path">⧉ path</span>`;
+    if (c.type === 'dir') {
+      return `<li class="pt-dir${depth < 1 ? ' open' : ''}" data-name="${escapeHtml(c.name.toLowerCase())}">
+        <div class="pt-row"><span class="pt-caret">▶</span><span>📁</span><span class="pt-name">${nm}/</span>
+        <span class="pt-count">${c.fileCount} files</span><span class="pt-size pt-sz">${ptFmtSize(c.size)}</span>${cp}</div>
+        ${ptRender(c, depth + 1, full + '/')}</li>`;
+    }
+    return `<li class="pt-file" data-name="${escapeHtml(c.name.toLowerCase())}">
+      <div class="pt-row"><span class="pt-caret"></span><span>📄</span><span class="pt-name">${nm}</span>
+      <span class="pt-size pt-sz">${ptFmtSize(c.size)}</span>${cp}</div></li>`;
+  }).join('') + '</ul>';
+}
+
+function ptToText(withSizes) {
+  const lines = [`${ptData.repo} (${ptData.branch})`];
+  const walk = (node, prefix) => {
+    const kids = ptSorted(node);
+    kids.forEach((c, i) => {
+      const last = i === kids.length - 1;
+      const size = withSizes ? `  [${ptFmtSize(c.size)}]` : '';
+      lines.push(prefix + (last ? '└── ' : '├── ') + c.name + (c.type === 'dir' ? '/' : '') + size);
+      if (c.type === 'dir') walk(c, prefix + (last ? '    ' : '│   '));
+    });
+  };
+  walk(ptData.root, '');
+  return lines.join('\n');
+}
+
+function ptApplySizes() {
+  document.querySelectorAll('#pt-content .pt-sz').forEach((el) => {
+    el.style.display = document.getElementById('pt-sizes').checked ? '' : 'none';
+  });
+}
+
+function ptSearch() {
+  const q = document.getElementById('pt-search').value.trim().toLowerCase();
+  const items = document.querySelectorAll('#pt-content li');
+  items.forEach((li) => li.classList.remove('pt-hide', 'pt-hit'));
+  if (!q) return;
+  // Hide everything, then reveal matches and their ancestor folders.
+  items.forEach((li) => li.classList.add('pt-hide'));
+  items.forEach((li) => {
+    if (!li.dataset.name.includes(q)) return;
+    li.classList.remove('pt-hide');
+    li.classList.add('pt-hit');
+    if (li.classList.contains('pt-dir')) li.classList.add('open'); // show a matching folder's contents
+    li.querySelectorAll('li').forEach((d) => d.classList.remove('pt-hide')); // a matching folder shows its contents
+    let p = li.parentElement.closest('li');
+    while (p) { p.classList.remove('pt-hide'); p.classList.add('open'); p = p.parentElement.closest('li'); }
+  });
+}
+
+let ptReqId = 0;
+async function loadProjectTree() {
+  const myReq = ++ptReqId;
+  ptData = null; // never export stale data while (re)loading or after an error
+  const el = document.getElementById('pt-content');
+  const meta = document.getElementById('pt-meta');
+  el.innerHTML = '<div class="empty-state">Loading…</div>';
+  meta.textContent = '';
+  try {
+    const data = await api('/api/admin?action=project-tree');
+    if (myReq !== ptReqId) return; // a newer refresh superseded this one
+    if (!data.configured) {
+      el.innerHTML = `<div class="placeholder-box" style="text-align:left">${escapeHtml(data.message)}</div>`;
+      return;
+    }
+    const root = ptBuild(data.items || []);
+    ptData = { repo: data.repo, branch: data.branch, truncated: data.truncated, root };
+    meta.innerHTML = `<b style="color:var(--bone)">${escapeHtml(data.repo)}</b> · branch <b style="color:var(--bone)">${escapeHtml(data.branch)}</b>
+      · ${root.dirCount} folders · ${root.fileCount} files · ${ptFmtSize(root.size)}
+      ${data.truncated ? '<br><span style="color:var(--danger)">GitHub truncated this listing (repo too large) — some entries are missing.</span>' : ''}`;
+    el.innerHTML = ptRender(root, 0);
+    document.getElementById('pt-search').value = '';
+    ptApplySizes();
+  } catch (err) {
+    if (myReq !== ptReqId) return;
+    el.innerHTML = `<div class="empty-state">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+document.getElementById('pt-content').addEventListener('click', (e) => {
+  const row = e.target.closest('.pt-dir > .pt-row');
+  if (row) row.parentElement.classList.toggle('open');
+});
+document.getElementById('pt-expand').addEventListener('click', () =>
+  document.querySelectorAll('#pt-content .pt-dir').forEach((d) => d.classList.add('open')));
+document.getElementById('pt-collapse').addEventListener('click', () =>
+  document.querySelectorAll('#pt-content .pt-dir').forEach((d) => d.classList.remove('open')));
+document.getElementById('pt-sizes').addEventListener('change', ptApplySizes);
+document.getElementById('pt-search').addEventListener('input', ptSearch);
+document.getElementById('pt-refresh').addEventListener('click', loadProjectTree);
+function ptFlat(node, base, out) {
+  ptSorted(node).forEach((c) => {
+    const path = base + c.name;
+    out.push({ path: c.type === 'dir' ? path + '/' : path, type: c.type, size: c.size });
+    if (c.type === 'dir') ptFlat(c, path + '/', out);
+  });
+  return out;
+}
+
+function ptToJson(node) {
+  return ptSorted(node).map((c) => c.type === 'dir'
+    ? { name: c.name, type: 'dir', size: c.size, children: ptToJson(c) }
+    : { name: c.name, type: 'file', size: c.size });
+}
+
+// Builds the export payload for the selected format.
+function ptBuildExport() {
+  const fmt = document.getElementById('pt-format').value;
+  const sizes = document.getElementById('pt-sizes').checked;
+  const base = ptData.repo.replace('/', '-');
+  if (fmt === 'markdown') {
+    return { ext: 'md', mime: 'text/markdown', name: base + '-tree',
+      text: `# ${ptData.repo} (${ptData.branch})\n\n\`\`\`\n${ptToText(sizes)}\n\`\`\`\n` };
+  }
+  if (fmt === 'json') {
+    return { ext: 'json', mime: 'application/json', name: base + '-tree',
+      text: JSON.stringify({ repo: ptData.repo, branch: ptData.branch, tree: ptToJson(ptData.root) }, null, 2) };
+  }
+  if (fmt === 'paths') {
+    return { ext: 'txt', mime: 'text/plain', name: base + '-paths',
+      text: ptFlat(ptData.root, '', []).map((r) => r.path + (sizes ? `  [${ptFmtSize(r.size)}]` : '')).join('\n') };
+  }
+  if (fmt === 'csv') {
+    const q = (v) => '"' + String(v).replace(/"/g, '""') + '"';
+    return { ext: 'csv', mime: 'text/csv', name: base + '-tree',
+      text: 'path,type,size_bytes\n' + ptFlat(ptData.root, '', []).map((r) => [q(r.path), r.type, r.size].join(',')).join('\n') };
+  }
+  return { ext: 'txt', mime: 'text/plain', name: base + '-tree', text: ptToText(sizes) };
+}
+
+async function ptCopyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; }
+  catch {
+    // Fallback for browsers/contexts where the async clipboard API is blocked.
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch {}
+    ta.remove();
+    return ok;
+  }
+}
+
+function ptFlash(btn, label, orig) {
+  btn.textContent = label;
+  setTimeout(() => (btn.textContent = orig), 1500);
+}
+
+document.getElementById('pt-copy').addEventListener('click', async (e) => {
+  if (!ptData) return;
+  const btn = e.currentTarget;
+  ptFlash(btn, (await ptCopyText(ptBuildExport().text)) ? 'Copied!' : 'Copy failed', 'Copy');
+});
+
+document.getElementById('pt-download').addEventListener('click', (e) => {
+  if (!ptData) return;
+  const ex = ptBuildExport();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([ex.text], { type: ex.mime }));
+  a.download = `${ex.name}.${ex.ext}`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  ptFlash(e.currentTarget, 'Exported!', 'Export');
+});
+
+// Per-row "copy path" button (capture phase so folder rows don't also toggle).
+document.getElementById('pt-content').addEventListener('click', async (e) => {
+  const cp = e.target.closest('.pt-cp');
+  if (!cp) return;
+  e.stopPropagation();
+  const orig = cp.textContent;
+  cp.textContent = (await ptCopyText(cp.dataset.path)) ? '✓ copied' : 'failed';
+  cp.style.opacity = '1';
+  setTimeout(() => { cp.textContent = orig; cp.style.opacity = ''; }, 1200);
+}, true);
+
 async function loadSystemStatus() {
   const el = document.getElementById('system-status-content');
   el.innerHTML = '<div class="empty-state">Loading…</div>';
@@ -3128,6 +3405,7 @@ async function loadDashboard() {
     document.getElementById('nav-debug').style.display = currentRole === 'super_admin' ? 'flex' : 'none';
     document.getElementById('nav-integrations').style.display = (currentRole === 'super_admin' || currentOrgTitle === 'CTO') ? 'flex' : 'none';
     document.getElementById('nav-system').style.display = (currentRole === 'super_admin' || currentOrgTitle === 'CTO') ? 'flex' : 'none';
+    document.getElementById('nav-projecttree').style.display = (currentRole === 'super_admin' || currentOrgTitle === 'CTO') ? 'flex' : 'none';
     document.getElementById('nav-maintenance').style.display = currentRole === 'super_admin' ? 'flex' : 'none';
     document.getElementById('nav-finance').style.display = (currentRole === 'super_admin' || currentOrgTitle === 'CFO') ? 'flex' : 'none';
     document.getElementById('nav-inventory').style.display = (currentRole === 'super_admin' || currentOrgTitle === 'COO') ? 'flex' : 'none';
