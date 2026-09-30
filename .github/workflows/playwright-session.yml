@@ -1,0 +1,37 @@
+name: playwright-session
+
+on:
+  workflow_dispatch:
+    inputs:
+      session_id:
+        required: true
+      suite:
+        default: all
+      target_url:
+        required: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Installed via npx --package so this never touches the repo's own
+      # package.json/package-lock.json (which already has Vite/React/etc.) —
+      # the tests only need real HTTP calls, not that build.
+      - name: Install Playwright + Chromium
+        run: npx --yes --package=@playwright/test playwright install --with-deps chromium
+
+      - name: Run session
+        run: npx --yes --package=@playwright/test playwright test
+        env:
+          SESSION_ID: ${{ inputs.session_id }}
+          SUITE: ${{ inputs.suite }}
+          TARGET_URL: ${{ inputs.target_url }}
+          API_URL: ${{ secrets.PW_API_URL }}
+          PW_REPORT_SECRET: ${{ secrets.PW_REPORT_SECRET }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
