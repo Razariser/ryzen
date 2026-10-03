@@ -21,6 +21,7 @@ function toApi(row) {
     badge: row.badge || undefined,
     sizes: row.sizes || [],
     image: row.image,
+    modelUrl: row.model_url || undefined,
     description: row.description || '',
   };
 }
@@ -35,6 +36,7 @@ function toDb(product) {
     badge: product.badge || null,
     sizes: product.sizes || [],
     image: product.image,
+    model_url: product.modelUrl || null,
     description: product.description || '',
   };
 }
