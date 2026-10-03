@@ -1359,6 +1359,12 @@ tbody tr:hover{background:rgba(255,255,255,.02)}
         <input type="file" id="p-image-file" accept="image/*" style="margin-top:6px;" />
         <div id="p-image-upload-status" style="font-size:11px;color:var(--gray);margin-top:4px;"></div>
       </div>
+      <div class="field">
+        <label>3D Model (.glb, optional)</label>
+        <input id="p-model" placeholder="3D model URL" />
+        <input type="file" id="p-model-file" accept=".glb,model/gltf-binary" style="margin-top:6px;" />
+        <div id="p-model-upload-status" style="font-size:11px;color:var(--gray);margin-top:4px;"></div>
+      </div>
       <div class="field"><label>Description</label><textarea id="p-description" rows="3"></textarea></div>
       <div class="error-msg" id="product-error"></div>
       <div class="modal-actions">
@@ -3965,6 +3971,9 @@ function openProductModal(product) {
   document.getElementById('p-badge').value = product && product.badge ? product.badge : '';
   document.getElementById('p-sizes').value = product && product.sizes ? product.sizes.join(', ') : '';
   document.getElementById('p-image').value = product ? product.image : '';
+  document.getElementById('p-model').value = product && product.modelUrl ? product.modelUrl : '';
+  document.getElementById('p-model-file').value = '';
+  document.getElementById('p-model-upload-status').textContent = '';
   document.getElementById('p-description').value = product && product.description ? product.description : '';
   document.getElementById('product-error').textContent = '';
   productModal.classList.add('open');
@@ -3997,6 +4006,7 @@ document.getElementById('product-form').addEventListener('submit', async (e) => 
     sizes: document.getElementById('p-sizes').value.split(',').map((s) => s.trim()).filter(Boolean),
     image: document.getElementById('p-image').value.trim(),
     description: document.getElementById('p-description').value.trim(),
+    modelUrl: document.getElementById('p-model').value.trim(),
   };
   const opVal = document.getElementById('p-originalPrice').value;
   if (opVal) product.originalPrice = Number(opVal);
@@ -5193,6 +5203,37 @@ document.getElementById('p-image-file').addEventListener('change', async functio
       statusEl.textContent = 'Uploaded ✓';
     } else {
       statusEl.textContent = 'Upload failed: ' + (data.error || 'unknown error');
+    }
+  } catch (err) {
+    statusEl.textContent = 'Upload failed: ' + err.message;
+  }
+});
+
+/* ---------- 3D model upload (.glb) ---------- */
+document.getElementById('p-model-file').addEventListener('change', async function (e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const statusEl = document.getElementById('p-model-upload-status');
+  if (!/\.glb$/i.test(file.name)) {
+    statusEl.textContent = 'Upload failed: please choose a .glb file';
+    e.target.value = '';
+    return;
+  }
+  statusEl.textContent = 'Uploading…';
+  const formData = new FormData();
+  formData.append('file', file);
+  try {
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + getToken() },
+      body: formData,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data.url) {
+      document.getElementById('p-model').value = data.url;
+      statusEl.textContent = 'Uploaded ✓';
+    } else {
+      statusEl.textContent = 'Upload failed: ' + (data.error || ('request failed (' + res.status + ')'));
     }
   } catch (err) {
     statusEl.textContent = 'Upload failed: ' + err.message;
